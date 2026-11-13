@@ -1,0 +1,5 @@
+/.toolchain/
+/dist/
+/build/work/
+/editor/bin/
+*.tmp
