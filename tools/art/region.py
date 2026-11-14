@@ -333,7 +333,7 @@ def draw_region(region, previews, path):
     image.save(path, optimize=True)
 
 
-def make_project(assets, tiles, player, blob):
+def make_project(assets, tiles, player, blob, npc):
     region = make_region()
     for maps, output in [(region, assets / 'project.rpgp'), (make_region(True), assets.parent / 'updates' / 'project-2.rpgp')]:
         validate(maps)
@@ -342,9 +342,12 @@ def make_project(assets, tiles, player, blob):
     previews = {}
     creature = blob.crop((0, 0, 16, 16))
     for record in region:
-        image = preview(record.world, tiles, player, show_player=False).convert('RGBA')
+        image = preview(record.world, tiles, player, show_player=record.key == region[0].key).convert('RGBA')
         for event in record.events:
-            if event.kind == 4:
+            if event.kind == 3:
+                x = (record.key + event.x + event.y) % 4 * 16
+                image.alpha_composite(npc.crop((x, 0, x + 16, 16)), (event.x * 16, event.y * 16))
+            elif event.kind == 4:
                 image.alpha_composite(creature, (event.x * 16, event.y * 16))
         previews[record.key] = image.convert('RGB')
     draw_region(region, previews, assets / 'region-preview.png')

@@ -36,6 +36,7 @@ namespace MossbellVale.Editor
         public Color BrushColor { get; set; }
         public Color EraserColor { get; set; }
         public bool ShowGrid { get; set; }
+        public bool ShowSubdivisions { get; set; }
 
         public Bitmap Pixels
         {
@@ -92,6 +93,7 @@ namespace MossbellVale.Editor
             AccessibleDescription = "Use arrows to position the cursor, Space to apply the tool, or Delete to erase.";
             TabStop = true;
             ShowGrid = true;
+            ShowSubdivisions = true;
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -123,6 +125,8 @@ namespace MossbellVale.Editor
                         e.Graphics.DrawLine(grid, bounds.Left, y, bounds.Right, y);
                 }
             }
+            if (ShowSubdivisions)
+                DrawSubdivisions(e.Graphics, bounds, cell);
             using (var outline = new Pen(Outline))
                 e.Graphics.DrawRectangle(outline, bounds.X - 1, bounds.Y - 1, bounds.Width + 1, bounds.Height + 1);
 
@@ -134,6 +138,24 @@ namespace MossbellVale.Editor
                 e.Graphics.DrawRectangle(Pens.Black, x, y, cell, cell);
                 if (cell >= 5)
                     e.Graphics.DrawRectangle(Pens.White, x + 1, y + 1, cell - 2, cell - 2);
+            }
+        }
+
+        private static void DrawSubdivisions(Graphics graphics, Rectangle bounds, int cell)
+        {
+            using (var contrast = new Pen(Color.FromArgb(204, 50, 37, 58), 3))
+            using (var line = new Pen(Color.FromArgb(212, 255, 219, 132)))
+            {
+                for (var x = bounds.Left + 8 * cell; x < bounds.Right; x += 8 * cell)
+                {
+                    graphics.DrawLine(contrast, x, bounds.Top, x, bounds.Bottom);
+                    graphics.DrawLine(line, x, bounds.Top, x, bounds.Bottom);
+                }
+                for (var y = bounds.Top + 8 * cell; y < bounds.Bottom; y += 8 * cell)
+                {
+                    graphics.DrawLine(contrast, bounds.Left, y, bounds.Right, y);
+                    graphics.DrawLine(line, bounds.Left, y, bounds.Right, y);
+                }
             }
         }
 

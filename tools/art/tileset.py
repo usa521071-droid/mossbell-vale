@@ -2,9 +2,9 @@
 
 from PIL import Image
 
-from leafgreen_buildings import building_tiles
-from leafgreen_terrain import terrain_tiles
-from leafgreen_vegetation import GRASS, vegetation
+from silver_buildings import building_tiles
+from silver_terrain import terrain_tiles
+from silver_vegetation import GRASS, vegetation
 from vertical_route import vertical_route
 
 
@@ -23,5 +23,10 @@ def make_atlas():
             raise ValueError(f'Tile {index} must be 16 by 16 RGBA')
         if (index < 16 or 32 <= index < 64 or 108 <= index <= 122 or index >= 128) and image.getchannel('A').getextrema() != (255, 255):
             raise ValueError(f'Ground tile {index} must be opaque')
+        for y in (0, 8):
+            for x in (0, 8):
+                colors = image.crop((x, y, x + 8, y + 8)).getcolors(maxcolors=4)
+                if colors is None or any(color[3] not in (0, 255) for _, color in colors):
+                    raise ValueError(f'Tile {index} exceeds the 8×8 palette at ({x}, {y})')
         atlas.paste(image, (index % 8 * 16, index // 8 * 16))
     return atlas, tiles

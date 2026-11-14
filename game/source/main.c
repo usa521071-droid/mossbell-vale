@@ -14,9 +14,9 @@ extern const unsigned int asset_project_size, asset_project_art_size;
 
 enum { EXPLORE, MENU, WARDROBE, UPDATES, REGIONS };
 enum { TILE = 32, TOP_WIDTH = 400, BOTTOM_WIDTH = 320, HEIGHT = 240 };
-static const uint32_t ink = 0xd5e9cd, panel = 0xfffbeb, dark = 0x477b62;
-static const uint32_t border = 0x7bad84, paper = 0x303945, muted = 0x526558, gold = 0x986045;
-static const uint32_t frame = 0x394d58, highlight = 0xfff0b8;
+static const uint32_t ink = 0xd9dec4, panel = 0xf6f2d8, dark = 0x424b69;
+static const uint32_t border = 0x8796ae, paper = 0x202433, muted = 0x4f5666, gold = 0x8c385a;
+static const uint32_t frame = 0x202433, highlight = 0xf5dba2;
 static const int dx[] = {0, -1, 1, 0}, dy[] = {1, 0, 0, -1};
 static const unsigned keys[] = {KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_UP};
 static World world;
@@ -54,12 +54,12 @@ static void say(const char *message)
 
 static void window(Screen screen, int x, int y, int width, int height)
 {
-    fill(screen, x + 2, y + 3, width, height, 0x35475c);
+    fill(screen, x + 2, y + 3, width, height, 0x667087);
     fill(screen, x + 2, y, width - 4, height, frame);
     fill(screen, x, y + 2, width, height - 4, frame);
     fill(screen, x + 2, y + 2, width - 4, height - 4, border);
     fill(screen, x + 4, y + 4, width - 8, height - 8, panel);
-    fill(screen, x + 5, y + 4, width - 10, 1, 0xffffff);
+    fill(screen, x + 5, y + 4, width - 10, 1, 0xfffbed);
 }
 
 static const Map *activeMap(void)
@@ -262,7 +262,7 @@ static void move(unsigned held, unsigned pressed)
 static void drawWorldPlayer(Screen screen, int cameraX, int cameraY)
 {
     drawPlayer(screen, xPixel * viewScale / 2 - cameraX,
-        yPixel * viewScale / 2 - cameraY - 8 * viewScale,
+        yPixel * viewScale / 2 - cameraY,
         direction, animation, viewScale, journey.outfit);
 }
 
@@ -314,8 +314,9 @@ static void drawWorld(Screen screen)
                 if (event->y != y || event->x < left || event->x > right) continue;
                 int x = event->x * tile - cameraX, py = y * tile - cameraY;
                 if (event->type == PROJECT_NPC) {
-                    const uint8_t colors[] = {2, 3, 1, 3};
-                    drawPlayer(screen, x, py - 8 * viewScale, 0, 0, viewScale, colors);
+                    int offset = event->x + event->y;
+                    int frame = (sceneTicks + offset * 3) % 96 < 8;
+                    drawNpc(screen, x, py, (map->id + offset) % 4, frame, viewScale);
                 } else if (event->type == PROJECT_SIGN && !world.object[y * world.width + event->x]) {
                     drawTile(screen, x, py, SIGN, viewScale);
                 }
@@ -335,14 +336,14 @@ static void heading(Screen screen, const char *title, const char *subtitle)
 {
     fill(screen, 0, 0, BOTTOM_WIDTH, HEIGHT, ink);
     fill(screen, 0, 0, BOTTOM_WIDTH, 53, dark);
-    fill(screen, 0, 1, BOTTOM_WIDTH, 3, 0xa1c89b);
+    fill(screen, 0, 1, BOTTOM_WIDTH, 3, 0xadb4c6);
     fill(screen, 0, 52, BOTTOM_WIDTH, 2, frame);
     fill(screen, 0, 54, BOTTOM_WIDTH, 3, border);
     drawTile(screen, 14, 10, GLOWBELL, 2);
     int scale = strlen(title) <= 21 ? 2 : 1;
     label(screen, 57, 13 + (scale == 1 ? 6 : 0), title, frame, scale);
-    label(screen, 55, 11 + (scale == 1 ? 6 : 0), title, 0xfff9d7, scale);
-    label(screen, 55, 36, subtitle, 0xecf7d8, 1);
+    label(screen, 55, 11 + (scale == 1 ? 6 : 0), title, panel, scale);
+    label(screen, 55, 36, subtitle, 0xe2e6d8, 1);
 }
 
 static void row(Screen screen, int index, int y, const char *text, bool enabled)
@@ -429,8 +430,9 @@ static void drawBottom(Screen screen)
             label(screen, 24, 87 + i * 35, text, paper, 1);
         }
         window(screen, 207, 77, 99, 131);
-        drawPlayer(screen, 233, 97, direction, 0, 3, journey.outfit);
+        drawPlayer(screen, 224, 101, direction, 0, 4, journey.outfit);
         label(screen, 222, 184, "A  TURN", muted, 1);
+        if (stockPlayerArt()) label(screen, 24, 213, "STOCK ART: SHIRT CHANGES ACCENT", muted, 1);
         label(screen, 24, 224, "OUTFIT SAVES WHEN YOU LEAVE", muted, 1);
     } else {
         heading(screen, "Updates", "Game " MOSSBELL_VERSION "  /  GitHub");

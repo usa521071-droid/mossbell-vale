@@ -59,6 +59,11 @@ namespace MossbellVale.Editor
         public byte[] Outfit { get; private set; }
         public List<Creature> Creatures { get { return creatures[Map.Id]; } }
         public int CreatureFrame { get { return ticks / 7 % 3; } }
+
+        public int NpcFrame(MapEvent item)
+        {
+            return (ticks + (item.X + item.Y) * 3) % 96 < 8 ? 1 : 0;
+        }
         public event Action<string> Message;
 
         public PlaytestSession(ProjectData source, int initialMap)

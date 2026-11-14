@@ -5,11 +5,14 @@
 #include <stdio.h>
 #include <string.h>
 
-extern const unsigned char asset_tiles[], asset_player[], asset_blob[];
+extern const unsigned char asset_tiles[], asset_player[], asset_blob[], asset_npc[];
 enum { OLD_TILE_BYTES = 128 * 256 * 4, TILE_BYTES = 128 * 288 * 4,
-    PLAYER_BYTES = 48 * 96 * 4, CREATURE_BYTES = 48 * 16 * 4 };
-static unsigned char editedArt[TILE_BYTES + PLAYER_BYTES + CREATURE_BYTES];
-static const unsigned char *tiles = asset_tiles, *player = asset_player, *creature = asset_blob;
+    FRAME_SIDE = 16, PLAYER_STRIDE = 48, OLD_PLAYER_HEIGHT = 24, PLAYER_DIRECTIONS = 4,
+    PLAYER_FRAMES = 3, OLD_PLAYER_BYTES = PLAYER_STRIDE * OLD_PLAYER_HEIGHT * PLAYER_DIRECTIONS * 4,
+    PLAYER_BYTES = PLAYER_STRIDE * FRAME_SIDE * PLAYER_DIRECTIONS * 4,
+    CREATURE_BYTES = 48 * 16 * 4, NPC_STRIDE = 64, NPC_BYTES = NPC_STRIDE * 32 * 4 };
+static unsigned char editedArt[TILE_BYTES + PLAYER_BYTES + CREATURE_BYTES + NPC_BYTES];
+static const unsigned char *tiles = asset_tiles, *player = asset_player, *creature = asset_blob, *npc = asset_npc;
 
 static void restoreBaseTile(int id)
 {
@@ -35,14 +38,50 @@ void resetArt(void)
     tiles = asset_tiles;
     player = asset_player;
     creature = asset_blob;
+    npc = asset_npc;
+}
+
+bool stockPlayerArt(void)
+{
+    return player == asset_player;
+}
+
+static void migratePlayer(unsigned char *destination, const unsigned char *source)
+{
+    memset(destination, 0, PLAYER_BYTES);
+    for (int direction = 0; direction < PLAYER_DIRECTIONS; direction++) {
+        for (int frame = 0; frame < PLAYER_FRAMES; frame++) {
+            const unsigned char *original =
+                source + (direction * OLD_PLAYER_HEIGHT * PLAYER_STRIDE + frame * FRAME_SIDE) * 4;
+            unsigned char *replacement =
+                destination + (direction * FRAME_SIDE * PLAYER_STRIDE + frame * FRAME_SIDE) * 4;
+            int top = OLD_PLAYER_HEIGHT, bottom = -1;
+            for (int row = 0; row < OLD_PLAYER_HEIGHT; row++) {
+                for (int column = 0; column < FRAME_SIDE; column++) {
+                    if (!original[(row * PLAYER_STRIDE + column) * 4 + 3]) continue;
+                    if (top == OLD_PLAYER_HEIGHT) top = row;
+                    bottom = row;
+                    break;
+                }
+            }
+            if (bottom < 0) continue;
+            int height = bottom - top + 1;
+            int crop = bottom - FRAME_SIDE + 1;
+            if (crop < 0) crop = 0;
+            if (crop > OLD_PLAYER_HEIGHT - FRAME_SIDE) crop = OLD_PLAYER_HEIGHT - FRAME_SIDE;
+            for (int row = 0; row < FRAME_SIDE; row++) {
+                int sourceRow = height > FRAME_SIDE
+                    ? top + (2 * row + 1) * height / (2 * FRAME_SIDE)
+                    : crop + row;
+                memcpy(replacement + row * PLAYER_STRIDE * 4, original + sourceRow * PLAYER_STRIDE * 4,
+                    FRAME_SIDE * 4);
+            }
+        }
+    }
 }
 
 static bool finishArt(int version)
 {
-    if (version < 3) {
-        memcpy(editedArt + OLD_TILE_BYTES, asset_tiles + OLD_TILE_BYTES, TILE_BYTES - OLD_TILE_BYTES);
-        memcpy(editedArt + TILE_BYTES + PLAYER_BYTES, asset_blob, CREATURE_BYTES);
-    }
     if (version == 1) {
         static const int moved[] = {20, 21, 60, 61, 62};
         for (size_t i = 0; i < sizeof(moved) / sizeof(*moved); i++)
@@ -53,12 +92,13 @@ static bool finishArt(int version)
     tiles = editedArt;
     player = editedArt + TILE_BYTES;
     creature = player + PLAYER_BYTES;
+    npc = creature + CREATURE_BYTES;
     return true;
 }
 
 static bool validHeader(const unsigned char *header)
 {
-    return !memcmp(header, "RPGA", 4) && header[4] >= 1 && header[4] <= 3 &&
+    return !memcmp(header, "RPGA", 4) && header[4] >= 1 && header[4] <= 4 &&
         !(header[5] | header[6] | header[7]);
 }
 
@@ -66,15 +106,24 @@ bool loadArtBytes(const unsigned char *data, unsigned size)
 {
     resetArt();
     if (size < 8 || !validHeader(data)) return false;
-    if (data[4] < 3) {
-        if (size != 8 + OLD_TILE_BYTES + PLAYER_BYTES) return false;
-        memcpy(editedArt, data + 8, OLD_TILE_BYTES);
-        memcpy(editedArt + TILE_BYTES, data + 8 + OLD_TILE_BYTES, PLAYER_BYTES);
-    } else {
+    int version = data[4];
+    if (version == 4) {
         if (size != 8 + sizeof(editedArt)) return false;
         memcpy(editedArt, data + 8, sizeof(editedArt));
+    } else {
+        unsigned tileSize = version == 3 ? TILE_BYTES : OLD_TILE_BYTES;
+        unsigned blobSize = version == 3 ? CREATURE_BYTES : 0;
+        if (size != 8 + tileSize + OLD_PLAYER_BYTES + blobSize) return false;
+        const unsigned char *oldPlayer = data + 8 + tileSize;
+        memcpy(editedArt, data + 8, tileSize);
+        if (tileSize < TILE_BYTES)
+            memcpy(editedArt + tileSize, asset_tiles + tileSize, TILE_BYTES - tileSize);
+        migratePlayer(editedArt + TILE_BYTES, oldPlayer);
+        unsigned char *blob = editedArt + TILE_BYTES + PLAYER_BYTES;
+        memcpy(blob, blobSize ? oldPlayer + OLD_PLAYER_BYTES : asset_blob, CREATURE_BYTES);
+        memcpy(blob + CREATURE_BYTES, asset_npc, NPC_BYTES);
     }
-    return finishArt(data[4]);
+    return finishArt(version);
 }
 
 bool loadCustomArt(const char *path)
@@ -246,6 +295,12 @@ void drawCreature(Screen screen, int x, int y, int frame, int scale)
 void drawPlayer(Screen screen, int x, int y, int direction, int frame, int scale,
     const uint8_t *outfit)
 {
-    blit(screen, x, y, player + (direction * 24 * 48 + frame * 16) * 4,
-        48, 16, 24, scale, outfit);
+    blit(screen, x, y, player + (direction * FRAME_SIDE * PLAYER_STRIDE + frame * FRAME_SIDE) * 4,
+        PLAYER_STRIDE, FRAME_SIDE, FRAME_SIDE, scale, outfit);
+}
+
+void drawNpc(Screen screen, int x, int y, int variant, int frame, int scale)
+{
+    const unsigned char *sprite = npc + FRAME_SIDE * (frame * NPC_STRIDE + variant) * 4;
+    blit(screen, x, y, sprite, NPC_STRIDE, FRAME_SIDE, FRAME_SIDE, scale, NULL);
 }

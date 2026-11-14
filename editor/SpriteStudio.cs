@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
+using System.Globalization;
 using System.Windows.Forms;
 
 namespace MossbellVale.Editor
@@ -15,11 +16,12 @@ namespace MossbellVale.Editor
         private static readonly string[] Directions = { "Down", "Left", "Right", "Up" };
         private static readonly string[] Frames = { "Idle", "Step 1", "Step 2" };
         private static readonly string[] PartNames = { "Shirt", "Pants", "Hair", "Skin" };
-        private static readonly int[] CommonColors = {
-            0x20252D, 0x45535F, 0x717B81, 0xBFC5C3, 0xF7F6E7, 0xFFECA6,
-            0x315742, 0x477448, 0x6E9D50, 0x9AC663, 0xC8DB7A, 0xF0C472,
-            0x544039, 0x81553F, 0xAC7759, 0xCE9563, 0xEAA775, 0xE87559,
-            0x343F67, 0x375D87, 0x4F87A5, 0x77C0BF, 0x795392, 0xBC709B
+        private static readonly int[] ColorSwatches = {
+            0x202433, 0xF6F2D8, 0xE75977, 0x4A4252, 0x7B7384, 0xB5B5BD,
+            0x294A42, 0x427352, 0x6B9C5A, 0x8CB563, 0xBDCE73, 0xDEDE8C,
+            0x634239, 0x94634A, 0xB57B52, 0xCE9C63, 0xE7BD7B, 0xF7DE9C,
+            0x394267, 0x526384, 0x638CB5, 0x8CB5CE, 0xADCED6, 0xDEF7DE,
+            0x634252, 0x944A5A, 0xBD636B, 0xDE8C94, 0xE7ADB5, 0xFFE7DE
         };
 
         private sealed class SpriteSlot
@@ -35,6 +37,7 @@ namespace MossbellVale.Editor
             public readonly int Category;
             public readonly int Index;
             public readonly Bitmap Pixels;
+            public readonly byte[] Bundle;
 
             public SpriteEdit(int category, int index, Bitmap pixels)
             {
@@ -43,7 +46,18 @@ namespace MossbellVale.Editor
                 Pixels = pixels;
             }
 
-            public void Dispose() { Pixels.Dispose(); }
+            public SpriteEdit(int category, int index, byte[] bundle)
+            {
+                Category = category;
+                Index = index;
+                Bundle = bundle;
+            }
+
+            public void Dispose()
+            {
+                if (Pixels != null)
+                    Pixels.Dispose();
+            }
         }
 
         private readonly GameArt art;
@@ -80,7 +94,7 @@ namespace MossbellVale.Editor
             BackColor = Paper;
             ForeColor = Ink;
             KeyPreview = true;
-            canvas.BrushColor = Color.FromArgb(32, 37, 45);
+            canvas.BrushColor = Color.FromArgb(32, 36, 51);
             canvas.Edited += CommitCanvas;
             canvas.ColorPicked += delegate(Color color)
             {
@@ -107,7 +121,7 @@ namespace MossbellVale.Editor
             Controls.Add(layout);
 
             preview.Paint += PaintPreview;
-            timer.Tick += delegate { frame = (frame + 1) % 4; if (spriteCategory >= 2) preview.Invalidate(); };
+            timer.Tick += delegate { frame = (frame + 1) % 4; if (spriteCategory == 2 || spriteCategory == 3) preview.Invalidate(); };
             timer.Start();
             SelectSlot(TileCatalog.IsGround(initialTile) ? 0 : 1, initialTile);
             SetColor(canvas.BrushColor);
@@ -125,6 +139,7 @@ namespace MossbellVale.Editor
             AddCommand(panel, "Import PNG", ImportPng);
             AddCommand(panel, "Save PNG", SavePng);
             AddCommand(panel, "Save art bundle", SaveArt);
+            AddCommand(panel, "Reset art", ResetArt);
             AddCommand(panel, "Done", Close);
             Shown += delegate { canvas.Focus(); };
             return panel;
@@ -134,7 +149,7 @@ namespace MossbellVale.Editor
         {
             var panel = Sidebar();
             panel.Controls.Add(Heading("Sprite"));
-            category.Items.AddRange(new object[] { "Ground tiles", "Object tiles", "Walking character", "Pink blob" });
+            category.Items.AddRange(new object[] { "Ground tiles", "Object tiles", "Walking character", "Pink blob", "Townsfolk NPCs" });
             category.SelectedIndexChanged += delegate { if (!adjusting) FillSlots(0); };
             slot.SelectedIndexChanged += delegate { if (!adjusting) DisplaySlot(); };
             panel.Controls.Add(category);
@@ -156,15 +171,18 @@ namespace MossbellVale.Editor
             var grid = new CheckBox { Text = "Pixel grid", Checked = true, AutoSize = true };
             grid.CheckedChanged += delegate { canvas.ShowGrid = grid.Checked; canvas.Invalidate(); };
             panel.Controls.Add(grid);
+            var blocks = new CheckBox { Text = "8 × 8 tile guides", Checked = true, AutoSize = true };
+            blocks.CheckedChanged += delegate { canvas.ShowSubdivisions = blocks.Checked; canvas.Invalidate(); };
+            panel.Controls.Add(blocks);
             return panel;
         }
 
         private Control BuildPalette()
         {
             var panel = Sidebar();
-            panel.Controls.Add(Heading("Colors"));
-            var colors = new FlowLayoutPanel { Width = 190, Height = 137, Margin = Padding.Empty };
-            foreach (var color in CommonColors)
+            panel.Controls.Add(Heading("Silver-style colors"));
+            var colors = new FlowLayoutPanel { Width = 190, Height = 156, Margin = Padding.Empty };
+            foreach (var color in ColorSwatches)
                 colors.Controls.Add(ColorButton(Color.FromArgb(unchecked((int)0xFF000000) | color), "#" + color.ToString("X6")));
             panel.Controls.Add(colors);
             swatch.Click += delegate
@@ -175,7 +193,8 @@ namespace MossbellVale.Editor
             };
             panel.Controls.Add(swatch);
             panel.Controls.Add(Heading("Outfit colors"));
-            panel.Controls.Add(new Label { Text = "These colors follow the player’s outfit.", Width = 190, Height = 42 });
+            panel.Controls.Add(new Label { Text = "The stock hero uses the shirt accent. Custom heroes can use all four outfit groups.",
+                Width = 190, Height = 72 });
             for (var part = 0; part < PartNames.Length; part++)
             {
                 var row = new FlowLayoutPanel { Width = 190, Height = 30, WrapContents = false, Margin = Padding.Empty };
@@ -211,6 +230,13 @@ namespace MossbellVale.Editor
                 slot.Items.Add(new SpriteSlot("Idle", 0));
                 slot.Items.Add(new SpriteSlot("Hop", 1));
                 slot.Items.Add(new SpriteSlot("Land", 2));
+            }
+            else if (categoryIndex == 4)
+            {
+                for (var pose = 0; pose < GameArt.NpcFrames; pose++)
+                    for (var variant = 0; variant < GameArt.NpcVariants; variant++)
+                        slot.Items.Add(new SpriteSlot("NPC " + (variant + 1) + (pose == 0 ? " · Idle" : " · Alternate"),
+                            pose * GameArt.NpcVariants + variant));
             }
             else
             {
@@ -261,12 +287,16 @@ namespace MossbellVale.Editor
             GameArt.UsePixelArt(e.Graphics);
             if (spriteCategory == 2)
             {
-                using (var sprite = art.GetSprite(true, index / 3 * 3 + frameToDraw))
+                using (var sprite = art.GetSprite(true, index / GameArt.PlayerFrames * GameArt.PlayerFrames + frameToDraw))
                     e.Graphics.DrawImage(sprite, bounds, 0, 0, sprite.Width, sprite.Height, GraphicsUnit.Pixel);
             }
             else if (spriteCategory == 3)
             {
                 art.DrawCreature(e.Graphics, bounds, frameToDraw);
+            }
+            else if (spriteCategory == 4)
+            {
+                art.DrawNpc(e.Graphics, bounds, index % GameArt.NpcVariants, index / GameArt.NpcVariants);
             }
             else
             {
@@ -303,12 +333,15 @@ namespace MossbellVale.Editor
 
         private Bitmap ReadSprite(int selectedCategory, int id)
         {
+            if (selectedCategory == 4)
+                return art.GetNpcFrame(id);
             return selectedCategory == 3 ? art.GetCreatureFrame(id) : art.GetSprite(selectedCategory == 2, id);
         }
 
         private void WriteSprite(int selectedCategory, int id, Bitmap pixels)
         {
-            if (selectedCategory == 3) art.SetCreatureFrame(id, pixels);
+            if (selectedCategory == 4) art.SetNpcFrame(id, pixels);
+            else if (selectedCategory == 3) art.SetCreatureFrame(id, pixels);
             else art.SetSprite(selectedCategory == 2, id, pixels);
         }
 
@@ -329,8 +362,16 @@ namespace MossbellVale.Editor
             from.RemoveAt(from.Count - 1);
             using (edit)
             {
-                Push(to, new SpriteEdit(edit.Category, edit.Index, ReadSprite(edit.Category, edit.Index)));
-                WriteSprite(edit.Category, edit.Index, edit.Pixels);
+                if (edit.Bundle != null)
+                {
+                    Push(to, new SpriteEdit(edit.Category, edit.Index, art.ToBundle()));
+                    art.LoadBundle(edit.Bundle);
+                }
+                else
+                {
+                    Push(to, new SpriteEdit(edit.Category, edit.Index, ReadSprite(edit.Category, edit.Index)));
+                    WriteSprite(edit.Category, edit.Index, edit.Pixels);
+                }
                 SelectSlot(edit.Category, edit.Index);
             }
             FinishEdit();
@@ -377,9 +418,12 @@ namespace MossbellVale.Editor
                 {
                     using (var source = new Bitmap(dialog.FileName))
                     {
-                        if (source.Size != canvas.Pixels.Size)
-                            throw new InvalidDataException("Use a PNG matching the selected sprite’s dimensions.");
-                        using (var pixels = source.Clone(new Rectangle(Point.Empty, source.Size), PixelFormat.Format32bppArgb))
+                        var legacyPlayer = spriteCategory == 2 &&
+                            source.Size == new Size(GameArt.PlayerWidth, GameArt.LegacyPlayerHeight);
+                        if (source.Size != canvas.Pixels.Size && !legacyPlayer)
+                            throw new InvalidDataException("Use a PNG matching the selected sprite size.");
+                        using (var pixels = legacyPlayer ? GameArt.ConvertLegacyFrame(source) :
+                            source.Clone(new Rectangle(Point.Empty, source.Size), PixelFormat.Format32bppArgb))
                         {
                             if (IsGround)
                                 for (var y = 0; y < pixels.Height; y++)
@@ -401,9 +445,33 @@ namespace MossbellVale.Editor
         private void SavePng()
         {
             using (var dialog = new SaveFileDialog { Filter = "PNG image (*.png)|*.png", DefaultExt = "png", AddExtension = true,
-                FileName = ((SpriteSlot)slot.SelectedItem).Name + ".png" })
+                FileName = SpriteFileName() })
                 if (dialog.ShowDialog(this) == DialogResult.OK)
                     TryImageAction(delegate { canvas.Pixels.Save(dialog.FileName, ImageFormat.Png); });
+        }
+
+        private string SpriteFileName()
+        {
+            var prefix = spriteCategory == 2 ? "player-" : spriteCategory == 3 ? "blob-" : spriteCategory == 4 ? "npc-" : "";
+            return prefix + index.ToString(CultureInfo.InvariantCulture) + ".png";
+        }
+
+        private void ResetArt()
+        {
+            var choice = MessageBox.Show(this, "Replace the tiles and sprites with the Silver-style defaults? Maps, events, and outfit choices stay in the project.",
+                "Reset artwork", MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2);
+            if (choice == DialogResult.Yes)
+                TryImageAction(UseDefaultArt);
+        }
+
+        private void UseDefaultArt()
+        {
+            var snapshot = art.ToBundle();
+            art.LoadBundle(null);
+            Push(undo, new SpriteEdit(spriteCategory, index, snapshot));
+            Clear(redo);
+            DisplaySlot();
+            FinishEdit();
         }
 
         private void SaveArt()

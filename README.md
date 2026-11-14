@@ -1,6 +1,6 @@
 # Mossbell Vale
 
-Mossbell Vale is a top-down exploration RPG for Nintendo 3DS with original 16-bit pixel art. Follow the road from Harbor Town through Bracken Route, Ember Cave and Slate Summit. Collect four glowbells across the region and ring the arch in Summit Shrine. The Windows editor opens the whole connected project.
+Mossbell Vale is a top-down exploration RPG for Nintendo 3DS with original Game Boy Color-style pixel art. Follow the road from Harbor Town through Bracken Route, Ember Cave and Slate Summit. Collect four glowbells across the region and ring the arch in Summit Shrine. The Windows editor opens the whole connected project.
 
 ## Play on Nintendo 3DS
 
@@ -16,10 +16,10 @@ Download `MossbellVale.cia` from [Releases](https://github.com/usa521071-droid/m
 
 Open `MossbellValeEditor.exe` from the same release. The project tree groups settlements, routes and interiors. Select a map to edit it.
 
-1. Pick a ground or object tile and paint on the 16×16-pixel tile grid. Mountain rock, cliff edges, corners and stairs are in **Ground**. Roof and facade pieces join to form buildings in **Objects**.
+1. Pick a ground or object tile and paint on the 16×16-pixel map grid. Each map cell is made of four 8×8 pixel tiles. Mountain rock, cliff edges, corners and stairs are in **Ground**. Roof and façade pieces join to form buildings in **Objects**.
 2. Use **Movement** to see collision and override whether the player can walk on a cell. Use **Events** to place a warp, a sign or an NPC. A warp needs a walkable destination in another map or a different location in the same map. Place a second warp for the return trip.
 3. Use **Header** to name or group the map and select the project's start map. Use **Set player start** on a walkable tile. Set the starting character's outfit in the editor.
-4. Open **Sprite Studio** (**Ctrl+E**) to draw tiles or character frames pixel by pixel. Use the outfit swatches to keep in-game color changes working. **Save PNG** and **Import PNG** work with one tile or frame at a time.
+4. Open **Sprite Studio** (**Ctrl+E**) to draw tiles or 16×16 sprite frames with 8×8 guides. Use the shirt swatch to recolor the stock hero's shared accent. Custom sprites can use all four outfit swatch groups. **Save PNG** and **Import PNG** work with one tile or frame at a time. To put the new artwork into an older project, use **Reset art**. This replaces its art sheets and can be undone in Sprite Studio.
 5. Save the editable project. Keep the `.rpgp` project and its `.rpga` art sidecar together using the same filename stem. You can also open an older single-map `.rpgw` as a one-map project.
 6. To test on the base game, choose **Export to SD**, select the root of your 3DS SD card and restart. It reads `world.rpgp` and `art.rpga` in `/3ds/MossbellVale/`.
 
@@ -53,11 +53,11 @@ powershell -ExecutionPolicy Bypass -File .\build\Build-3DS.ps1
 powershell -ExecutionPolicy Bypass -File .\editor\build.ps1
 ```
 
-The build writes the CIA, 3DSX and editor EXE to `dist`. The 3DS tool installer uses a portable directory. Pass `-ToolRoot` to both 3DS scripts to choose a specific location. To regenerate the graphics and demo world, run `py tools/art/make_assets.py` with Pillow installed. To use Sprite Studio exports, add `--overrides PATH` and name the PNGs by tile ID (for example, `23.png`), player frame (`player-0.png` through `player-11.png`), or `player.png` for the whole sprite sheet.
+The build writes the CIA, 3DSX and editor EXE to `dist`. The 3DS tool installer uses a portable directory. Pass `-ToolRoot` to both 3DS scripts to choose a specific location. To regenerate the graphics and demo world, run `py tools/art/make_assets.py` with Pillow installed. Add `--overrides PATH` to use Sprite Studio PNG exports. The generator accepts numbered tile PNGs such as `23.png`, the whole `player.png` sheet, and individual frames named `player-0.png` through `player-11.png`, `blob-0.png` through `blob-2.png`, or `npc-0.png` through `npc-7.png`.
 
 The RPGW v2 map starts with four ASCII bytes (`RPGW`), followed by five little-endian 16-bit values (format version, width, height, spawn X, spawn Y), four palette bytes (shirt, pants, hair, skin), then two row-major byte arrays for ground and objects. Dimensions are 8–128 tiles per side. Loading a v1 map migrates its existing mountain ledges and stairs to the ground layer.
 
-The RPGA v3 art sidecar starts with the bytes `52 50 47 41 03 00 00 00`, followed by the 128×288 tile sheet, 48×96 player sheet, and 48×16 creature sheet in scanline RGBA order. Each tile and creature frame is 16×16. The player sheet uses 16×24 frames with rows for down, left, right and up. Older art bundles load with the new stairs, ladders and creature art filled in.
+The RPGA v4 art sidecar starts with the bytes `52 50 47 41 04 00 00 00`, followed by the 128×288 tile sheet, 48×64 player sheet, 48×16 creature sheet and 64×32 townsfolk sheet in scanline RGBA order. Each frame is 16×16. The player sheet has rows for down, left, right and up. The townsfolk sheet has four variants in columns and two poses in rows. Versions 1–3 still load. Their 16×24 player frames are fitted individually to 16×16, and stock art fills sheets or tiles absent from the older format.
 
 RPGP v2 stores up to 16 named maps. Each entry contains an RPGW grid, one movement byte per cell, and up to 64 warp, sign, NPC or creature events. The map IDs are stable within a project, so renaming a map preserves its links. RPGP v1 projects can still open.
 

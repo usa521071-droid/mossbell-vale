@@ -171,7 +171,6 @@ namespace MossbellVale.Editor
         {
             private readonly PlaytestSession session;
             private readonly GameArt art;
-            private readonly Bitmap npcSprite;
             private Bitmap playerSprite;
             private string message = "";
             private int messageTime;
@@ -180,7 +179,6 @@ namespace MossbellVale.Editor
             {
                 this.session = session;
                 this.art = art;
-                npcSprite = art.RecolorPlayer(new byte[] { 2, 3, 1, 3 });
                 RefreshOutfit();
                 BackColor = Color.FromArgb(15, 28, 31);
                 SetStyle(ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.AllPaintingInWmPaint |
@@ -274,7 +272,7 @@ namespace MossbellVale.Editor
                         continue;
                     var bounds = TileBounds(item.X, item.Y, size, camera);
                     if (item.Type == MapEventType.Npc)
-                        GameArt.DrawPlayer(graphics, npcSprite, 0, 0, new Rectangle(bounds.Left, bounds.Top - 8 * scale, bounds.Width, 24 * scale));
+                        art.DrawNpc(graphics, bounds, (session.Map.Id + item.X + item.Y) % GameArt.NpcVariants, session.NpcFrame(item));
                     else if (item.Type == MapEventType.Sign && map.Objects[map.Width * row + item.X] == 0)
                         art.DrawTile(graphics, 30, bounds);
                 }
@@ -291,7 +289,7 @@ namespace MossbellVale.Editor
             private void DrawPlayer(Graphics graphics, Point camera, int scale)
             {
                 var player = session.PixelPosition;
-                var bounds = new Rectangle(player.X * scale - camera.X, (player.Y - 8) * scale - camera.Y,
+                var bounds = new Rectangle(player.X * scale - camera.X, (player.Y + PlaytestSession.CellSize - GameArt.PlayerHeight) * scale - camera.Y,
                     GameArt.PlayerWidth * scale, GameArt.PlayerHeight * scale);
                 GameArt.DrawPlayer(graphics, playerSprite, session.Direction, session.Frame, bounds);
             }
@@ -329,7 +327,6 @@ namespace MossbellVale.Editor
             {
                 if (disposing)
                 {
-                    npcSprite.Dispose();
                     playerSprite.Dispose();
                 }
                 base.Dispose(disposing);

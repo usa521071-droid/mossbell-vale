@@ -267,7 +267,9 @@ namespace MossbellVale.Editor
             facing.SelectedIndexChanged += delegate { preview.Direction = facing.SelectedIndex; preview.Invalidate(); };
             panel.Controls.Add(facing);
 
-            var parts = new[] { "Shirt", "Pants", "Hair", "Skin" };
+            panel.Controls.Add(new Label { Text = "The stock hero uses the shirt accent. Other colors apply to custom sprites.",
+                ForeColor = Muted, Width = 190, Height = 56 });
+            var parts = new[] { "Shirt accent", "Pants", "Hair", "Skin" };
             for (var index = 0; index < parts.Length; index++)
             {
                 var part = index;
@@ -693,7 +695,7 @@ namespace MossbellVale.Editor
             recolored = art.RecolorPlayer(world.Outfit);
             preview.Sprite = recolored;
             preview.Invalidate();
-            map.Display(world, recolored);
+            map.Display(world, recolored, activeMap.Id);
             if (old != null)
                 old.Dispose();
         }

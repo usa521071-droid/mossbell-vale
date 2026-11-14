@@ -300,7 +300,7 @@ def preview(world, tiles, player, show_player=True):
             image.alpha_composite(tiles[overlay], position)
     if show_player:
         sx, sy = world.spawn
-        image.alpha_composite(player.crop((0, 0, 16, 24)), (sx * 16, sy * 16 - 8))
+        image.alpha_composite(player.crop((0, 0, 16, 16)), (sx * 16, sy * 16))
     return image.convert('RGB')
 
 

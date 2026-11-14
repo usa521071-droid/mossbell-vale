@@ -8,6 +8,7 @@ namespace MossbellVale.Editor
     {
         private readonly GameArt art;
         private WorldData world;
+        private int mapId;
         private Bitmap player;
         private EditorView view;
         private int zoom = 2;
@@ -48,11 +49,12 @@ namespace MossbellVale.Editor
             HighlightRegion(Rectangle.Empty);
         }
 
-        public void Display(WorldData map, Bitmap sprite)
+        public void Display(WorldData map, Bitmap sprite, int id)
         {
             if (!Object.ReferenceEquals(world, map))
                 highlighted = Rectangle.Empty;
             world = map;
+            mapId = id;
             player = sprite;
             ResizeCanvas();
         }
@@ -90,9 +92,16 @@ namespace MossbellVale.Editor
             }
 
             foreach (var item in world.Events)
-                if (item.Type == MapEventType.Creature && item.X >= firstX && item.X <= lastX &&
-                    item.Y >= firstY && item.Y <= lastY)
-                    art.DrawCreature(e.Graphics, new Rectangle(item.X * pixels, item.Y * pixels, pixels, pixels), 0);
+            {
+                if (item.X < firstX || item.X > lastX || item.Y < firstY || item.Y > lastY)
+                    continue;
+
+                var bounds = new Rectangle(item.X * pixels, item.Y * pixels, pixels, pixels);
+                if (item.Type == MapEventType.Creature)
+                    art.DrawCreature(e.Graphics, bounds, 0);
+                else if (item.Type == MapEventType.Npc && view == EditorView.Map)
+                    art.DrawNpc(e.Graphics, bounds, (mapId + item.X + item.Y) % GameArt.NpcVariants);
+            }
 
             if (view == EditorView.Movement)
                 DrawMovement(e.Graphics, firstX, lastX, firstY, lastY, pixels);

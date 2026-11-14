@@ -4,11 +4,10 @@ import argparse
 from pathlib import Path
 
 from PIL import Image, ImageDraw
-from leafgreen_player import frames
 from presets import make_presets
 from region import make_project
+from silver_actors import blob_sheet, frames, npc_sheet
 from tileset import make_atlas
-from vertical_route import blob_sheet
 
 
 ASSETS = Path(__file__).resolve().parents[2] / 'assets'
@@ -83,12 +82,18 @@ def main():
     atlas, tiles = make_atlas()
     player = frames()
     blob = blob_sheet()
+    npc = npc_sheet()
     if options.overrides:
-        player = studio_override(options.overrides, 'player', (48, 96)) or player
+        player = studio_override(options.overrides, 'player', (48, 64), (48, 96)) or player
         for index in range(12):
-            frame = studio_override(options.overrides, f'player-{index}', (16, 24))
+            frame = studio_override(options.overrides, f'player-{index}', (16, 16), (16, 24))
             if frame is not None:
-                player.paste(frame, (index % 3 * 16, index // 3 * 24))
+                player.paste(frame, (index % 3 * 16, index // 3 * 16))
+        for name, sheet, columns, count in [('blob', blob, 3, 3), ('npc', npc, 4, 8)]:
+            for index in range(count):
+                frame = studio_override(options.overrides, f'{name}-{index}', (16, 16))
+                if frame is not None:
+                    sheet.paste(frame, (index % columns * 16, index // columns * 16))
         for index in range(len(tiles)):
             art = studio_override(options.overrides, str(index), (16, 16))
             if art is not None:
@@ -96,23 +101,41 @@ def main():
                     raise ValueError(f'Ground tile {index} must be opaque')
                 tiles[index] = art
                 atlas.paste(art, (index % 8 * 16, index // 8 * 16))
-    for name, image in [('tiles', atlas), ('player', player), ('blob', blob)]:
+    for name, image in [('tiles', atlas), ('player', player), ('blob', blob), ('npc', npc)]:
         image.save(ASSETS / f'{name}.png', optimize=True)
         (ASSETS / f'{name}.rgba').write_bytes(image.tobytes())
     preview = make_presets(ASSETS, tiles, player)
-    make_project(ASSETS, tiles, player, blob)
+    make_project(ASSETS, tiles, player, blob, npc)
     make_icon(tiles)
     make_banner(preview, tiles)
 
 
-def studio_override(directory, name, expected_size):
+def studio_override(directory, name, expected_size, legacy_size=None):
     path = directory / f'{name}.png'
     if not path.is_file():
         return None
     with Image.open(path) as image:
-        if image.size != expected_size:
-            raise ValueError(f'{path.name} must measure {expected_size[0]} × {expected_size[1]} pixels')
-        return image.convert('RGBA')
+        art = image.convert('RGBA')
+    if art.size == expected_size:
+        return art
+    if art.size != legacy_size:
+        raise ValueError(f'{path.name} must measure {expected_size[0]} × {expected_size[1]} pixels')
+
+    sheet = Image.new('RGBA', expected_size)
+    for y in range(0, art.height, 24):
+        for x in range(0, art.width, 16):
+            frame = art.crop((x, y, x + 16, y + 24))
+            bounds = frame.getchannel('A').getbbox()
+            if bounds is None:
+                continue
+            top, bottom = bounds[1], bounds[3]
+            if bottom - top <= 16:
+                start = min(8, max(0, bottom - 16))
+                compact = frame.crop((0, start, 16, start + 16))
+            else:
+                compact = frame.crop((0, top, 16, bottom)).resize((16, 16), Image.Resampling.NEAREST)
+            sheet.paste(compact, (x, y // 24 * 16))
+    return sheet
 
 
 if __name__ == '__main__':

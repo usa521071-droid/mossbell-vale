@@ -208,7 +208,7 @@ namespace MossbellVale.Editor
             var canvas = new MapCanvas(art) { Zoom = 1 };
             var instructions = new Label { Text = "Click a walkable tile without an event.", Dock = DockStyle.Bottom, Height = 31,
                 TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(10, 0, 0, 0) };
-            canvas.Display(map.World, null);
+            canvas.Display(map.World, null, map.Id);
             canvas.SetView(EditorView.Events);
             canvas.HighlightRegion(new Rectangle(target.X, target.Y, 1, 1));
             canvas.StrokeStarted += delegate(Point point, MouseButtons button)

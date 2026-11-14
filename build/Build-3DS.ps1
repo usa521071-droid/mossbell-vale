@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string] $Version = '1.4.0',
+    [string] $Version = '1.5.0',
     [string] $ToolRoot,
     [string] $OutputDirectory,
     [string] $Title = 'Mossbell Vale',
@@ -110,6 +110,7 @@ $githubDefine
         tiles = 'assets/tiles.rgba'
         player = 'assets/player.rgba'
         blob = 'assets/blob.rgba'
+        npc = 'assets/npc.rgba'
         world = 'assets/world.rpgw'
         dungeon = 'assets/dungeon.rpgw'
         mountain = 'assets/mountain.rpgw'
@@ -117,7 +118,7 @@ $githubDefine
         project = 'assets/project.rpgp'
         project_art = 'assets/project-art.rpga'
     }
-    $spriteDimensions = @{ tiles = @(128, 288); player = @(48, 96); blob = @(48, 16) }
+    $spriteDimensions = @{ tiles = @(128, 288); player = @(48, 64); blob = @(48, 16); npc = @(64, 32) }
     foreach ($sprite in $spriteDimensions.GetEnumerator()) {
         $width, $height = $sprite.Value
         $path = $assetPaths[$sprite.Key]
