@@ -4,10 +4,10 @@
 #include "world.h"
 
 #ifndef MOSSBELL_BUILD
-#define MOSSBELL_BUILD 10300
+#define MOSSBELL_BUILD 10301
 #endif
 #ifndef MOSSBELL_VERSION
-#define MOSSBELL_VERSION "1.3.0"
+#define MOSSBELL_VERSION "1.3.1"
 #endif
 #if !MOSSBELL_PUBLISHED && !defined(MOSSBELL_GITHUB)
 #define MOSSBELL_GITHUB "usa521071-droid/mossbell-vale"

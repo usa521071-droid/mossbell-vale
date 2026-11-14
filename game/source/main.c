@@ -309,9 +309,9 @@ static void row(Screen screen, int index, int y, const char *text, bool enabled)
 
 static void drawMinimap(Screen screen)
 {
-    static const uint32_t colors[] = {0x719953,0x719953,0x81a857,0x66894c,
-        0xc5a170,0xb28c65,0xc4ae75,0xb18b5a,0x5497a6,0x3f758e,0x386480,
-        0x5f9ea8,0x9c9978,0x628054,0x8e817c,0x9c977f};
+    static const uint32_t colors[] = {0x83c99f,0x83c99f,0x83c99f,0x83c99f,
+        0xece3a0,0xece3a0,0xece3a0,0xa16e48,0x8ac9c7,0x639fbb,0x4f82a8,
+        0x73b3c5,0xb2a588,0x78bc91,0x63a45c,0xb1b8b3};
     const int size = 92;
     for (int py = 0; py < size; py++) {
         int y = py * world.height / size;

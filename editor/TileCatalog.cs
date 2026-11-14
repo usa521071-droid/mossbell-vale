@@ -79,7 +79,7 @@ namespace MossbellVale.Editor
         {
             var names = new List<string> {
                 "Meadow", "Meadow Tufts", "Daisies", "Clover", "Clay Path", "Pebbled Path", "Sand", "Boardwalk",
-                "Shallows", "Water", "Deep Water", "Rapids", "Stone Trail", "Moss", "Heather", "Cobblestone",
+                "Shallows", "Water", "Deep Water", "Rapids", "Stone Trail", "Moss", "Tall Grass", "Cobblestone",
                 "Fir", "Oak", "Shrub", "Boulder", "Broad Boulder", "Slate Cluster", "Fern", "Wildflowers",
                 "Hollow Log", "Fence", "Shop Awning", "Red Roof", "Stump", "Stone Arch", "Trail Sign", "Glowbell"
             };

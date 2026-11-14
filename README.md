@@ -49,7 +49,7 @@ powershell -ExecutionPolicy Bypass -File .\build\Build-3DS.ps1
 powershell -ExecutionPolicy Bypass -File .\editor\build.ps1
 ```
 
-The build writes the CIA, 3DSX and editor EXE to `dist`. The 3DS tool installer uses a portable directory. Pass `-ToolRoot` to both 3DS scripts to choose a specific location. To regenerate the graphics and demo world, run `py tools/art/make_assets.py` with Pillow installed.
+The build writes the CIA, 3DSX and editor EXE to `dist`. The 3DS tool installer uses a portable directory. Pass `-ToolRoot` to both 3DS scripts to choose a specific location. To regenerate the graphics and demo world, run `py tools/art/make_assets.py` with Pillow installed. To use Sprite Studio exports, add `--overrides PATH` and name the PNGs by tile ID (for example, `23.png`), player frame (`player-0.png` through `player-11.png`), or `player.png` for the whole sprite sheet.
 
 The RPGW v2 map starts with four ASCII bytes (`RPGW`), followed by five little-endian 16-bit values (format version, width, height, spawn X, spawn Y), four palette bytes (shirt, pants, hair, skin), then two row-major byte arrays for ground and objects. Dimensions are 8–128 tiles per side. Loading a v1 map migrates its existing mountain ledges and stairs to the ground layer.
 
