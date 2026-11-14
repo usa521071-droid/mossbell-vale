@@ -17,7 +17,9 @@ namespace MossbellVale.Editor
         private const int PlayerSheetWidth = 48;
         private const int PlayerSheetHeight = 96;
         private const int ArtFileSize = 8 + (TilesWidth * TilesHeight + PlayerSheetWidth * PlayerSheetHeight) * 4;
-        private static readonly byte[] Header = { (byte)'R', (byte)'P', (byte)'G', (byte)'A', 1, 0, 0, 0 };
+        private const int VersionOffset = 4;
+        private const byte LegacyVersion = 1;
+        private static readonly byte[] Header = { (byte)'R', (byte)'P', (byte)'G', (byte)'A', 2, 0, 0, 0 };
 
         public static readonly string[][] PaletteNames = {
             new[] { "Rose", "Pine", "Gold", "Lilac", "Sky", "Berry" },
@@ -70,9 +72,13 @@ namespace MossbellVale.Editor
                 bytes = defaultBundle;
             if (bytes.Length != ArtFileSize)
                 throw new InvalidDataException("The art bundle has an incorrect size.");
+            bool legacy = bytes[VersionOffset] == LegacyVersion;
             for (var i = 0; i < Header.Length; i++)
-                if (bytes[i] != Header[i])
-                    throw new InvalidDataException("The art bundle is missing its RPGA version 1 header.");
+                if (bytes[i] != Header[i] && !(legacy && i == VersionOffset))
+                    throw new InvalidDataException("The art bundle is missing a supported RPGA header.");
+
+            if (legacy)
+                bytes = MigrateMountains(bytes);
 
             var offset = Header.Length;
             using (var grounds = ReadBitmap(bytes, ref offset, TilesWidth, TilesHeight))
@@ -85,6 +91,25 @@ namespace MossbellVale.Editor
                 player = new Bitmap(actor);
             }
             Revision++;
+        }
+
+        private byte[] MigrateMountains(byte[] bytes)
+        {
+            var result = (byte[])bytes.Clone();
+            result[VersionOffset] = Header[VersionOffset];
+            for (var id = 0; id < TileCount; id++)
+            {
+                if (id != 20 && id != 21 && id != 60 && id != 62 && !TileCatalog.IsMountainStructure(id))
+                    continue;
+
+                var region = SpriteRegion(false, id);
+                for (var y = region.Top; y < region.Bottom; y++)
+                {
+                    var offset = Header.Length + (y * TilesWidth + region.Left) * 4;
+                    Buffer.BlockCopy(defaultBundle, offset, result, offset, region.Width * 4);
+                }
+            }
+            return result;
         }
 
         public Bitmap GetSprite(bool character, int index)

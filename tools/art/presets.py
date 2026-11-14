@@ -10,6 +10,7 @@ from PIL import Image, ImageDraw
 ADJACENT = [(0, -1), (1, 0), (0, 1), (-1, 0)]
 DIAGONALS = [(-1, -1), (1, -1), (1, 1), (-1, 1)]
 CORNER_INDEX = {(0, 3): 4, (0, 1): 5, (1, 2): 6, (2, 3): 7}
+SOLID_GROUND = (*range(8, 12), 61, *range(108, 120))
 
 
 class Map:
@@ -36,9 +37,9 @@ class Map:
                 p = (x + dx, y + dy)
                 if p in visited or not (0 <= p[0] < self.ground.width and 0 <= p[1] < self.ground.height):
                     continue
-                if self.ground.getpixel(p) in range(8, 12):
+                if self.ground.getpixel(p) in SOLID_GROUND:
                     continue
-                if self.objects.getpixel(p) not in (0, 22, 23, 31, 86, 87, 95, *range(120, 126)):
+                if self.objects.getpixel(p) not in (0, 22, 23, 31, 86, 87, 95, 123, 124, 125):
                     continue
                 visited.add(p)
                 queue.append(p)
@@ -46,7 +47,10 @@ class Map:
 
     def save(self, path):
         reachable = self.reach()
-        assert self.ground.getpixel(self.spawn) not in range(8, 12) and not self.objects.getpixel(self.spawn)
+        assert all(tile_id < 16 or 32 <= tile_id <= 63 or 108 <= tile_id <= 122 for tile_id in self.ground.tobytes())
+        assert all(tile_id == 0 or 16 <= tile_id <= 31 or 64 <= tile_id <= 107 or 123 <= tile_id <= 127
+                   for tile_id in self.objects.tobytes())
+        assert self.ground.getpixel(self.spawn) not in SOLID_GROUND and not self.objects.getpixel(self.spawn)
         objectives = [point for point in self.cells() if self.objects.getpixel(point) in (29, 30, 31)]
         assert len(objectives) in (5, 6)
         for x, y in objectives:
@@ -54,7 +58,7 @@ class Map:
                 assert (x, y) in reachable, (path, x, y)
             else:
                 assert any((x+dx, y+dy) in reachable for dx, dy in ADJACENT), (path, x, y)
-        header = struct.pack('<4s5H4B', b'RPGW', 1, *self.ground.size, *self.spawn, 0, 0, 0, 0)
+        header = struct.pack('<4s5H4B', b'RPGW', 2, *self.ground.size, *self.spawn, 0, 0, 0, 0)
         path.write_bytes(header + self.ground.tobytes() + self.objects.tobytes())
 
     def stamp(self, x, y, width, ids):
@@ -112,6 +116,16 @@ def house(world, x, y, width=3):
         world.objects.putpixel((x + width, y + row), 86)
 
 
+def market(world, x, y):
+    for row in range(2):
+        world.stamp(x, y + row, 5, [27] * 5)
+    world.stamp(x, y + 2, 5, [26] * 5)
+    world.stamp(x, y + 3, 5, [76, 80, 77, 80, 78])
+    world.stamp(x, y + 4, 5, [87] * 5)
+    for row in range(5):
+        world.objects.putpixel((x + 5, y + row), 86)
+
+
 def big_oak(world, x, y):
     world.stamp(x, y, 3, range(88, 94))
     world.objects.putpixel((x + 1, y + 2), 94)
@@ -123,27 +137,38 @@ def fence(world, x, y, width):
 
 
 def make_city(official=False):
-    world = Map(44, 31, (16, 15), ([0, 1, 2, 3], [71, 18, 3, 8]), 215)
+    world = Map(44, 31, (16, 15), ([0, 1, 2, 3], [84, 11, 1, 4]), 215)
     trails = Image.new('1', world.ground.size)
     draw = ImageDraw.Draw(trails)
-    for box in [(3, 14, 42, 17), (15, 2, 18, 26), (27, 11, 30, 25), (25, 19, 40, 23), (0, 23, 16, 26), (32, 8, 35, 20)]:
+    for box in [(3, 14, 42, 18), (15, 2, 18, 26), (27, 12, 30, 25), (25, 19, 40, 23), (0, 23, 16, 26), (32, 10, 35, 20)]:
         draw.rectangle(box, fill=1)
     surface(world, trails, 32, lambda _: world.random.choices([4, 5], [87, 13])[0])
     pond = Image.new('1', world.ground.size)
     draw = ImageDraw.Draw(pond)
-    draw.polygon([(3, 4), (10, 4), (10, 5), (12, 5), (12, 10), (10, 10), (10, 11), (4, 11), (4, 10), (2, 10), (2, 6), (3, 6)], fill=1)
-    surface(world, pond, 44, lambda p: 9 if 4 < p[0] < 10 and 5 < p[1] < 10 else 8)
+    draw.polygon([(0, 2), (9, 2), (9, 3), (11, 3), (11, 5), (13, 5), (13, 8), (12, 8), (12, 11), (11, 11), (11, 12), (5, 12), (5, 11), (2, 11), (2, 9), (0, 9)], fill=1)
+    surface(world, pond, 44, lambda p: 9 if 2 < p[0] < 11 and 4 < p[1] < 10 else 8)
+    world.floor.rectangle((4, 10, 8, 11), fill=7)
 
-    for x, y, width in [(8, 8, 5), (20, 8, 6), (29, 3, 3), (36, 8, 4), (5, 25, 4), (21, 22, 3), (31, 24, 3)]:
+    for x, y, width in [(20, 8, 6), (33, 4, 4), (36, 9, 4), (5, 25, 4), (21, 22, 3)]:
         house(world, x, y, width)
-    for x, y in [(0, 0), (9, 0), (12, 1), (19, 0), (23, 2), (2, 11), (5, 9), (1, 18), (4, 18), (11, 19), (19, 19), (25, 27), (36, 26), (40, 23), (41, 6), (36, 0), (13, 28), (39, 28)]:
+    market(world, 9, 10)
+    market(world, 25, 3)
+    world.floor.rectangle((4, 12, 8, 14), fill=63)
+    world.floor.rectangle((19, 13, 25, 14), fill=63)
+    world.floor.rectangle((28, 12, 31, 14), fill=63)
+    world.floor.rectangle((31, 15, 33, 17), fill=63)
+    for x, y in [(4, 12), (8, 12), (4, 14), (19, 14), (25, 14), (28, 12), (31, 12), (31, 17), (33, 17)]:
+        world.scenery.point((x, y), fill=127)
+    for x, y in [(30, 8), (31, 8), (31, 9), (30, 10), (26, 12), (26, 13), (35, 21), (36, 21)]:
+        world.scenery.point((x, y), fill=123)
+    for x, y in [(0, 0), (10, 0), (19, 0), (0, 18), (3, 19), (11, 20), (19, 20), (27, 27), (34, 26), (40, 23), (41, 6), (36, 0), (13, 28), (39, 28)]:
         big_oak(world, x, y)
-    for x, y, width in [(6, 18, 8), (19, 18, 7), (32, 24, 6), (20, 5, 5), (1, 27, 4)]:
+    for x, y, width in [(6, 19, 8), (19, 19, 7), (32, 24, 6), (20, 5, 5), (1, 27, 4)]:
         fence(world, x, y, width)
-    for x, y in [(7, 20), (8, 21), (9, 20), (10, 21), (20, 20), (22, 20), (32, 12), (35, 12), (39, 13), (14, 12), (14, 13), (19, 12), (19, 13), (5, 13), (3, 28), (24, 24)]:
+    for x, y in [(7, 21), (8, 22), (9, 21), (10, 22), (19, 12), (19, 13), (5, 13), (14, 12), (14, 13), (3, 28), (24, 24)]:
         world.objects.putpixel((x, y), 23)
-    for x in range(7, 14):
-        world.objects.putpixel((x, 19), 123)
+    for x in range(7, 13):
+        world.objects.putpixel((x, 20), 123)
 
     world.scenery.point([(16, 13)], fill=30)
     world.scenery.point([(14, 7), (10, 25), (38, 21)], fill=31)
@@ -156,11 +181,11 @@ def make_city(official=False):
     world.scenery.point([(34, 17), (40, 17), (34, 19), (40, 19)], fill=23)
 
     if official:
-        world.floor.rectangle((26, 2, 28, 6), fill=56)
-        world.scenery.rectangle((26, 2, 28, 2), fill=96)
-        world.scenery.rectangle((26, 3, 26, 5), fill=97)
-        world.scenery.rectangle((28, 3, 28, 5), fill=99)
-        world.scenery.point((27, 3), fill=31)
+        world.floor.rectangle((30, 25, 32, 29), fill=56)
+        world.scenery.rectangle((30, 25, 32, 25), fill=96)
+        world.scenery.rectangle((30, 26, 30, 28), fill=97)
+        world.scenery.rectangle((32, 26, 32, 28), fill=99)
+        world.scenery.point((31, 26), fill=31)
     return world
 
 
@@ -195,10 +220,10 @@ def make_cave():
         world.objects.putpixel((x, y), 125)
     for x, y in [(5, 16), (6, 17), (12, 15), (23, 8), (35, 13), (35, 14), (30, 18), (12, 20)]:
         world.objects.putpixel((x, y), 126)
-    for y, stairs_id in [(11, 120), (12, 121), (13, 122)]:
-        world.ground.putpixel((17, y), 59)
-        world.objects.putpixel((17, y), stairs_id)
     world.floor.rectangle((16, 11, 18, 11), fill=59)
+    for y, stairs_id in [(11, 120), (12, 121), (13, 122)]:
+        world.ground.putpixel((17, y), stairs_id)
+        world.objects.putpixel((17, y), 0)
     world.scenery.point((14, 13), fill=30)
     world.scenery.point([(8, 6), (32, 18), (11, 18)], fill=31)
     world.floor.rectangle((30, 9, 32, 10), fill=63)
@@ -208,41 +233,59 @@ def make_cave():
 
 
 def make_mountain():
-    world = Map(42, 31, (20, 22), ([60, 61, 62], [81, 7, 12]), 469)
-    cliffs = Image.new('1', world.ground.size)
-    draw = ImageDraw.Draw(cliffs)
-    draw.rectangle((0, 0, 41, 30), fill=1)
-    draw.polygon([(3, 18), (6, 18), (6, 15), (8, 15), (8, 12), (10, 12), (10, 9), (13, 9), (13, 6), (16, 6), (16, 4), (28, 4), (28, 7), (31, 7), (31, 10), (34, 10), (34, 13), (36, 13), (36, 17), (38, 17), (38, 23), (36, 23), (36, 26), (31, 26), (31, 28), (12, 28), (12, 26), (7, 26), (7, 24), (3, 24)], fill=0)
-    surface(world, cliffs, 108, 61, True)
+    world = Map(43, 32, (21, 28), ([61], [1]), 469)
+    left = [19, 19, 17, 17, 16, 16, 14, 14, 13, 13, 11, 11, 10, 10, 8, 8,
+            7, 7, 5, 5, 6, 6, 8, 8, 11, 11, 13, 13, 16, 16, 19, 19]
+    right = [24, 24, 26, 26, 28, 28, 29, 29, 31, 31, 32, 32, 34, 34, 35, 35,
+             37, 37, 39, 39, 38, 38, 36, 36, 34, 34, 32, 32, 29, 29, 24, 24]
+    # Narrow each stepped ridge toward the summit and widen the terraces at its foot.
+    for offset in (12, 9, 6, 3, 0):
+        basin = Image.new('1', world.ground.size)
+        draw = ImageDraw.Draw(basin)
+        for y, (a, b) in enumerate(zip(left, right)):
+            draw.line((max(0, a - offset), y, min(42, b + offset), y), fill=1)
+        for point in world.cells():
+            if not basin.getpixel(point):
+                continue
+            edge = outline(basin, point)
+            if edge is not None:
+                tile_id = 108 + edge
+            elif offset:
+                tile_id = 61
+            else:
+                tile_id = 62 if point[1] > 19 else 60
+            world.ground.putpixel(point, tile_id)
 
-    terraces = [
-        ([(12, 15), (16, 15), (16, 13), (24, 13), (24, 14), (28, 14), (28, 17), (31, 17), (31, 22), (28, 22), (28, 23), (14, 23), (14, 21), (12, 21)], (20, 22)),
-        ([(15, 11), (18, 11), (18, 9), (26, 9), (26, 11), (28, 11), (28, 15), (26, 15), (26, 17), (17, 17), (17, 15), (15, 15)], (20, 16)),
-        ([(19, 6), (26, 6), (26, 8), (27, 8), (27, 12), (18, 12), (18, 8), (19, 8)], (23, 11)),
-    ]
-    for polygon, (sx, sy) in terraces:
-        ledge = Image.new('1', world.ground.size)
-        ImageDraw.Draw(ledge).polygon(polygon, fill=1)
-        for p in world.cells():
-            if ledge.getpixel(p):
-                world.objects.putpixel(p, 0)
-                world.ground.putpixel(p, 62)
-        surface(world, ledge, 108, 62, True)
-        for y, stairs_id in [(sy, 120), (sy+1, 121), (sy+2, 122)]:
-            world.ground.putpixel((sx, y), 60)
-            world.objects.putpixel((sx, y), stairs_id)
+    for bounds, middle, tile in [
+        ((14, 20, 33, 23), 19, 62), ((15, 15, 29, 19), 23, 60),
+        ((17, 10, 28, 14), 20, 60), ((19, 5, 27, 9), 24, 60),
+    ]:
+        x1, y1, x2, y2 = bounds
+        world.floor.rectangle((x1, y1, x2, y2), fill=tile)
+        for x in range(x1, x2 + 1):
+            world.ground.putpixel((x, y2), 115 if x == x1 else 114 if x == x2 else 110)
+        for y in range(y1, y2):
+            world.ground.putpixel((x1, y), 111)
+            world.ground.putpixel((x2, y), 109)
+        for y, stairs_id in [(y2-1, 120), (y2, 121), (y2+1, 122)]:
+            world.ground.putpixel((middle, y), stairs_id)
 
-    world.spawn = (20, 25)
-    for x, y in [(19, 20), (15, 24), (31, 19), (9, 21), (33, 17), (24, 25), (21, 9), (25, 8), (17, 17), (29, 19)]:
-        if not world.objects.getpixel((x, y)):
-            world.objects.putpixel((x, y), 124)
-    for x, y in [(16, 24), (25, 24), (25, 20), (12, 24), (33, 24)]:
-        if not world.objects.getpixel((x, y)):
-            world.objects.putpixel((x, y), 126)
-    world.floor.rectangle((21, 7, 24, 8), fill=63)
-    world.scenery.point((22, 7), fill=29)
-    world.scenery.point((19, 25), fill=30)
-    world.scenery.point([(11, 23), (25, 19), (26, 10)], fill=31)
+    world.floor.rectangle((20, 1, 23, 4), fill=60)
+    world.floor.rectangle((20, 2, 23, 3), fill=63)
+    world.floor.rectangle((20, 26, 23, 31), fill=60)
+    world.floor.line((21, 24, 21, 27), fill=60)
+    for x, y in [(16, 21), (17, 21), (16, 22), (18, 25), (26, 26), (29, 24), (30, 23), (14, 24), (33, 19), (34, 18)]:
+        if world.ground.getpixel((x, y)) == 62:
+            world.floor.point((x, y), fill=1)
+    for x, y in [(18, 17), (21, 12), (25, 6), (24, 25), (10, 19), (28, 16), (16, 25), (14, 22)]:
+        if world.ground.getpixel((x, y)) not in SOLID_GROUND:
+            world.scenery.point((x, y), fill=124)
+    for x, y in [(20, 24), (14, 25), (33, 18), (29, 21), (27, 10)]:
+        if world.ground.getpixel((x, y)) not in SOLID_GROUND:
+            world.scenery.point((x, y), fill=126)
+    world.scenery.point((21, 2), fill=29)
+    world.scenery.point((20, 28), fill=30)
+    world.scenery.point([(13, 24), (25, 17), (25, 7)], fill=31)
     return world
 
 
@@ -266,5 +309,5 @@ def make_presets(assets, tiles, player):
         world.save(assets / f'{name}.rpgw')
         image = preview(world, tiles, player)
         image.save(assets / f'{name}-preview.png', optimize=True)
-    make_city(True).save(assets.parent / 'updates' / 'world-2.rpgw')
+    make_city(True).save(assets.parent / 'updates' / 'world-3.rpgw')
     return preview(city, tiles, player).convert('RGBA')

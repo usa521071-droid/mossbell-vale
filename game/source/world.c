@@ -29,10 +29,11 @@ static unsigned read16(const uint8_t *data)
 
 static bool passable(int ground, int object)
 {
-    return (ground < 8 || ground > 11) &&
+    return (ground < 8 || ground > 11) && ground != 61 &&
+        (ground < 108 || ground > 119) &&
         (object == 0 || object == 22 || object == 23 || object == GLOWBELL ||
          object == 86 || object == 87 || object == 95 ||
-         (object >= 120 && object <= 125));
+         (object >= 123 && object <= 125));
 }
 
 static bool validOutfit(const uint8_t *outfit)
@@ -42,10 +43,35 @@ static bool validOutfit(const uint8_t *outfit)
     return true;
 }
 
+static bool legacyTile(int ground, int object)
+{
+    return (ground < 16 || (ground >= 32 && ground < 64)) &&
+        (object == 0 || (object >= 16 && object < 32) ||
+         (object >= 64 && object < 128));
+}
+
+static bool currentTile(int ground, int object)
+{
+    return (ground < 16 || (ground >= 32 && ground < 64) ||
+            (ground >= 108 && ground <= 122)) &&
+        (object == 0 || (object >= 16 && object < 32) ||
+         (object >= 64 && object < 108) || (object >= 123 && object < 128));
+}
+
+static void migrateTile(uint8_t *ground, uint8_t *object)
+{
+    if (*ground == 61) *ground = 60;
+    if (*object >= 108 && *object <= 122) {
+        *ground = *object;
+        *object = 0;
+    }
+}
+
 bool worldParse(World *world, const uint8_t *data, size_t size)
 {
-    if (size < WORLD_HEADER || memcmp(data, "RPGW", 4) || read16(data + 4) != 1)
-        return false;
+    if (size < WORLD_HEADER || memcmp(data, "RPGW", 4)) return false;
+    unsigned version = read16(data + 4);
+    if (version != 1 && version != 2) return false;
     int width = read16(data + 6), height = read16(data + 8);
     int spawnX = read16(data + 10), spawnY = read16(data + 12);
     if (width < 8 || height < 8 || width > WORLD_SIDE || height > WORLD_SIDE ||
@@ -55,15 +81,17 @@ bool worldParse(World *world, const uint8_t *data, size_t size)
     if (size != WORLD_HEADER + cells * 2) return false;
     const uint8_t *ground = data + WORLD_HEADER;
     const uint8_t *objects = ground + cells;
+    int spawn = spawnY * width + spawnX;
     for (size_t i = 0; i < cells; i++) {
         uint8_t base = ground[i], object = objects[i];
-        if (!(base < 16 || (base >= 32 && base < 64)) ||
-            !(object == 0 || (object >= 16 && object < 32) ||
-              (object >= 64 && object < 128)))
+        if (version == 1) {
+            if (!legacyTile(base, object)) return false;
+            migrateTile(&base, &object);
+        } else if (!currentTile(base, object)) {
             return false;
+        }
+        if (i == (size_t)spawn && !passable(base, object)) return false;
     }
-    int spawn = spawnY * width + spawnX;
-    if (!passable(ground[spawn], objects[spawn])) return false;
     uint32_t signature = 2166136261u;
     for (size_t i = 0; i < size; i++) signature = (signature ^ data[i]) * 16777619u;
     world->width = width;
@@ -74,6 +102,10 @@ bool worldParse(World *world, const uint8_t *data, size_t size)
     memcpy(world->outfit, data + 14, OUTFIT_PARTS);
     memcpy(world->ground, ground, cells);
     memcpy(world->object, objects, cells);
+    if (version == 1) {
+        for (size_t i = 0; i < cells; i++)
+            migrateTile(&world->ground[i], &world->object[i]);
+    }
     return true;
 }
 

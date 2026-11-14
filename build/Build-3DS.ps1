@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string] $Version = '1.1.0',
+    [string] $Version = '1.2.0',
     [string] $ToolRoot,
     [string] $OutputDirectory
 )
@@ -37,7 +37,7 @@ $ctr = Join-Path $dkp 'libctru'
 $portlibs = Join-Path $dkp 'portlibs/3ds'
 $gcc = Join-Path $gccBin 'arm-none-eabi-gcc.exe'
 $tools = Join-Path $dkp 'tools/bin'
-$makerom = Get-ChildItem (Join-Path $sdk 'makerom') -Filter makerom.exe -File -Recurse -ErrorAction SilentlyContinue |
+$makerom = Get-ChildItem (Join-Path $sdk 'makerom-0.18.4') -Filter makerom.exe -File -Recurse -ErrorAction SilentlyContinue |
     Select-Object -First 1 -ExpandProperty FullName
 $bannertool = Get-ChildItem (Join-Path $sdk 'bannertool') -Filter bannertool.exe -File -Recurse -ErrorAction SilentlyContinue |
     Select-Object -First 1 -ExpandProperty FullName

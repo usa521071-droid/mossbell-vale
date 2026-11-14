@@ -1,16 +1,15 @@
 """Draw the terrain, buildings, foliage and ledges on the 16-pixel game grid."""
 
 from PIL import Image, ImageDraw
-import random
 
 
-MINT = '#79c6a1'
-SAND = '#eee590'
-WATER = '#5baec4'
-CAVE = '#a6aa8a'
-CAVE_TOP = '#c7a196'
-GRANITE = '#c3c2a2'
-ROCK_TOP = '#b0b1a1'
+MINT = '#8ac9a3'
+SAND = '#f0e5a0'
+WATER = '#61b4bf'
+CAVE = '#a4a48a'
+CAVE_TOP = '#c3a080'
+GRANITE = '#e0d2a1'
+ROCK_TOP = '#adae9a'
 
 
 def cut(image, width, height):
@@ -18,25 +17,13 @@ def cut(image, width, height):
             for y in range(0, height, 16) for x in range(0, width, 16)]
 
 
-def texture(base, shades, seed, count=22):
-    image = Image.new('RGBA', (16, 16), base)
-    draw = ImageDraw.Draw(image)
-    randomizer = random.Random(seed)
-    for _ in range(count):
-        x = randomizer.randrange(16)
-        y = randomizer.randrange(16)
-        draw.point((x, y), fill=randomizer.choice(shades))
-    return image
-
-
 def grass(kind):
-    shades = ['#6fbd99', '#8acfa8', '#71c39f']
-    image = texture(MINT, shades, kind, 8)
+    image = Image.new('RGBA', (16, 16), MINT)
     draw = ImageDraw.Draw(image)
-    marks = [[(4, 5), (12, 12)], [(3, 10), (10, 3), (13, 14)], [(3, 5), (9, 11)], [(6, 8), (12, 4), (2, 13)]][kind]
+    marks = [[], [(5, 6), (11, 12)], [(4, 4)], [(9, 9)]][kind]
     for x, y in marks:
-        draw.point([(x - 2, y - 1), (x, y + 1), (x + 2, y - 2)], fill='#57b490')
-        draw.point([(x - 1, y - 1), (x, y), (x + 1, y - 2)], fill='#a6e0b0')
+        draw.point([(x - 1, y), (x, y + 1), (x + 1, y - 1)], fill='#6db68e')
+        draw.point((x, y), fill='#a5d5ac')
     if kind == 2:
         for x, y in [(4, 8), (12, 3), (11, 13)]:
             draw.point([(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)], fill='#f1e9c9')
@@ -45,8 +32,10 @@ def grass(kind):
 
 
 def dirt(kind=0):
-    image = texture(SAND, ['#e2cd80', '#dcca79', '#f3e99d'], 221 + kind, 18)
+    image = Image.new('RGBA', (16, 16), SAND)
     draw = ImageDraw.Draw(image)
+    draw.point([(2, 5), (9, 3), (6, 12), (13, 9)], fill='#dac788')
+    draw.point([(3, 4), (9, 10), (14, 8)], fill='#e9d798')
     if kind == 1:
         for x, y in [(3, 3), (11, 8), (7, 13)]:
             draw.line([(x, y), (x + 1, y - 1)], fill='#d3bf74')
@@ -69,24 +58,33 @@ def water(kind):
 
 
 def stone(kind):
-    palettes = [(CAVE, '#bac0a0', '#898672'), (CAVE, '#c4c6a8', '#898371'),
-                (CAVE_TOP, '#d5b2a6', '#b28c84'), ('#a9a98b', '#c2bea0', '#92917a'),
-                (GRANITE, '#d3d1ad', '#a8a88e'), (ROCK_TOP, '#c1bfa9', '#929586'),
-                ('#8abe91', '#9bce9c', '#6ca686'), ('#a3acb0', '#c2c8c3', '#7f8c99')]
+    palettes = [(CAVE, '#b2b297', '#8e8f78'), (CAVE, '#c4c2a5', '#858570'),
+                (CAVE_TOP, '#d1b295', '#ae8c72'), ('#a9a98b', '#c2bea0', '#92917a'),
+                (GRANITE, '#eddcaa', '#c3b388'), (ROCK_TOP, '#c1c0ab', '#858778'),
+                (MINT, '#9ad3a3', '#6ca889'), ('#a9b2b3', '#c6ccc5', '#86929b')]
     base, high, low = palettes[kind]
-    image = texture(base, [high, low, base], 762 + kind, 34 if kind < 6 else 12)
+    image = Image.new('RGBA', (16, 16), base)
     draw = ImageDraw.Draw(image)
-    if kind in (2, 5, 7):
-        for y in ([2, 7, 12] if kind == 2 else [3, 7, 11, 15]):
+    if kind in (2, 7):
+        for y in ([2, 8, 14] if kind == 2 else [3, 7, 11, 15]):
             for x in range((-3 if y % 2 else 0), 16, 7):
                 draw.line([(x, y), (x + 3, y), (x + 4, y + 1), (x + 6, y + 1)], fill=low)
                 draw.line([(x + 1, y + 1), (x + 3, y + 1)], fill=high)
         if kind == 2:
-            draw.arc((4, 2, 13, 10), 180, 315, fill=high)
-            draw.arc((1, 7, 8, 14), 25, 200, fill=low)
+            draw.polygon([(3, 4), (4, 3), (6, 3), (7, 4), (5, 5), (4, 5)], fill=high)
+            draw.point((5, 6), fill=low)
+    elif kind == 5:
+        draw.polygon([(0, 2), (4, 1), (8, 3), (13, 2), (15, 5), (14, 8), (9, 7), (6, 9), (2, 7), (0, 8)], fill=high)
+        draw.polygon([(0, 11), (5, 10), (9, 12), (13, 11), (15, 12), (15, 15), (12, 15), (9, 14), (5, 15), (2, 14), (0, 15)], fill='#a3a58e')
+        draw.line([(0, 8), (2, 7), (6, 9), (9, 7), (13, 8), (15, 7)], fill=low)
+        draw.line([(9, 7), (8, 5), (10, 4)], fill=low)
+        draw.line([(3, 14), (5, 13), (5, 11)], fill='#787f6e')
+        draw.line([(0, 3), (4, 2), (7, 4)], fill='#d0cdb1')
+        draw.line([(11, 13), (13, 12), (15, 13)], fill='#c4c2a7')
     else:
-        for x, y in [(3, 4), (11, 6), (7, 13)]:
-            draw.line((x, y, x + 2, y), fill=low)
+        marks = [(2, 4), (10, 8), (6, 14)] if kind in (0, 1, 3) else [(4, 5), (11, 12)]
+        for x, y in marks:
+            draw.line((x, y, x + (2 if kind == 1 else 1), y), fill=low)
             draw.line((x, y - 1, x + 1, y - 1), fill=high)
     return image
 
@@ -120,25 +118,26 @@ def building():
     roof = Image.new('RGBA', (48, 48))
     draw = ImageDraw.Draw(roof)
     for x in range(48):
-        border = 5 - min(5, min(x, 47-x) // 2)
-        shade = '#78b4c5' if x > 4 else '#a9cfce'
-        if x >= 44:
-            shade = '#6495ad'
-        draw.line((x, border, x, 43), fill=shade)
-        draw.point((x, border), fill='#526983')
-        draw.point((x, border + 1), fill='#bbe1d9')
-    for y in range(8, 41, 4):
-        draw.line((2, y, 45, y), fill='#689bb4')
-        draw.line((3, y + 1, 44, y + 1), fill='#a3cad0')
-        for x in range(7 + y % 8, 43, 8):
-            draw.line((x, y - 2, x, y - 1), fill='#70a6bb')
-    draw.line((1, 8, 1, 44), fill='#586d87')
-    draw.line((46, 8, 46, 44), fill='#506482')
-    draw.rectangle((0, 42, 47, 47), fill='#4f627d')
-    draw.line((0, 43, 47, 43), fill='#9ebac0')
-    draw.line((2, 46, 45, 46), fill='#617996')
+        distance = min(x, 47 - x)
+        top = 12 - min(12, 2 * distance)
+        shade = '#7daec0' if distance > 5 else '#9bc9ce' if x < 24 else '#668fa9'
+        draw.line((x, top, x, 43), fill=shade)
+        draw.point((x, top), fill='#465d7a')
+        draw.point((x, top + 1), fill='#b9ddd7')
+    for y in range(7, 38, 5):
+        start = 1 + max(0, (13 - y) // 2)
+        draw.line((start, y, 47 - start, y), fill='#618da9')
+        draw.line((start + 1, y + 1, 46 - start, y + 1), fill='#9dc8ce')
+        for x in range(7 + y % 2 * 4, 43, 8):
+            draw.line((x, y - 1, x, y), fill='#6e9cb6')
+    draw.line((0, 12, 0, 44), fill='#536986')
+    draw.line((47, 12, 47, 44), fill='#4b627e')
+    draw.rectangle((0, 40, 47, 47), fill='#50647f')
+    draw.line((0, 40, 47, 40), fill='#b2c7ca', width=2)
+    draw.line((0, 44, 47, 44), fill='#7d98ae')
+    draw.line((0, 47, 47, 47), fill='#424f6a')
 
-    wall = Image.new('RGBA', (48, 32), '#eadab6')
+    wall = Image.new('RGBA', (48, 32), '#e5d4a9')
     draw = ImageDraw.Draw(wall)
     draw.rectangle((0, 0, 47, 3), fill='#596881')
     draw.rectangle((1, 4, 46, 7), fill='#938984')
@@ -150,8 +149,8 @@ def building():
     draw.line((0, 31, 47, 31), fill='#596a84')
 
     for x in (0, 15, 31, 46):
-        draw.rectangle((x, 6, x + 1, 30), fill='#69798a')
-        draw.point((x, 8), fill='#aebcb9')
+        draw.rectangle((x, 6, x + 1, 30), fill='#77876e')
+        draw.point((x, 8), fill='#bcc79a')
 
     for x in (3, 34):
         draw.rectangle((x, 12, x+10, 21), fill='#64718b')
@@ -171,9 +170,10 @@ def building():
     draw.line((0, 15, 15, 15), fill='#a6b0ae')
     wall.paste(door, (16, 16))
     draw = ImageDraw.Draw(wall)
-    draw.rectangle((17, 10, 30, 15), fill='#5e748f')
-    draw.rectangle((19, 11, 28, 13), fill='#88acbe')
-    draw.line((20, 11, 27, 11), fill='#b9d9d9')
+    draw.rectangle((17, 8, 30, 15), fill='#536983')
+    draw.rectangle((18, 9, 29, 13), fill='#ede6c1')
+    draw.line((20, 10, 27, 10), fill='#998b72')
+    draw.point((23, 11), fill='#62958e')
     return cut(roof, 48, 48) + cut(wall, 48, 32), door, wall.crop((0, 16, 16, 32))
 
 
@@ -241,52 +241,52 @@ def oak():
     return cut(image, 48, 32) + [trunk, shade(1)]
 
 
-def cliff(direction, mountain, plateau):
-    face, light, rim, low, shadow = ('#777d72', '#a6a694', '#d0caab', '#5d655e', '#6b766a') if mountain else (
-        '#915c58', '#b27e74', '#dbafa1', '#70464a', '#80534f')
+def cliff(direction, mountain, plateau, floor):
+    face, light, rim, low, shadow = ('#838679', '#a0a08d', '#c8caac', '#555e52', '#a1a084') if mountain else (
+        '#936047', '#b78763', '#dfbe8c', '#644336', '#83705c')
+    middle = '#939585' if mountain else '#b07b5c'
     south = direction in (2, 6, 7, 10, 11)
     north = direction in (0, 4, 5, 8, 9)
     face_size = 11 if south else 9 if north else 7
-    image = Image.new('RGBA', (16, 16))
+    image = floor.copy() if mountain else Image.new('RGBA', (16, 16))
     draw = ImageDraw.Draw(image)
     for x, y in [(x, y) for y in range(16) for x in range(16)]:
         distance = edge_distance(x, y, direction)
-        step_length = (x + (3 if mountain else 0)) % 8
-        if direction in (1, 3):
-            step_length = (y + 1) % 8
-        offset = 1 if step_length in (0, 7) else 0
+        lateral = y if direction in (1, 3) else x
+        column = (lateral + (3 if mountain else 1)) % 8
+        cut = (distance in (2, 3) and column in (0, 7)) or (distance in (6, 7) and column in (3, 4))
+        if not mountain and distance in (0, 1):
+            distance -= 1 if (lateral % 7) in (0, 1, 6) else 0
         if distance >= face_size:
             image.putpixel((x, y), plateau.getpixel((x, y)))
-        elif distance == face_size - 1:
+        elif distance == face_size - 1 or (distance == face_size - 2 and column < 5):
             draw.point((x, y), fill=rim)
         elif distance >= 0:
-            stripe = (x + (y // 4) + (2 if mountain else 0)) % (5 if mountain else 7)
-            if direction in (1, 3):
-                stripe = (y + x // 4) % 7
-            if distance == 0 or stripe == 0 or distance == 1 and stripe > 2:
+            seam = (column == 0 and distance < 9) or (column == 4 and distance > 4) or cut
+            if distance <= 1 or seam:
                 color = low
-            elif stripe in (2, 3) or distance == face_size - 2:
+            elif column in (1, 2) and distance >= 4:
                 color = light
+            elif distance > 5 and column in (4, 5, 6):
+                color = middle
             else:
                 color = face
-            if offset and distance == 0:
-                color = shadow
             draw.point((x, y), fill=color)
         elif distance == -1:
             draw.point((x, y), fill=shadow)
     return image
 
 
-def stairs(part):
-    image = Image.new('RGBA', (16, 16))
+def stairs(part, floor):
+    image = floor.copy()
     draw = ImageDraw.Draw(image)
-    draw.rectangle((2, 0, 13, 15), fill='#86765d')
-    draw.line((2, 0, 2, 15), fill='#635e54')
-    draw.line((13, 0, 13, 15), fill='#635e54')
+    draw.rectangle((1, 0, 14, 15), fill='#877d67')
+    draw.line((1, 0, 1, 15), fill='#626958')
+    draw.line((14, 0, 14, 15), fill='#626958')
     for y in range(0, 16, 4):
-        draw.line((3, y, 12, y), fill='#f1dd9e')
-        draw.rectangle((3, y + 1, 12, y + 2), fill='#c7b880')
-        draw.line((4, y + 1, 4, y + 2), fill='#dacb90')
+        draw.line((2, y, 13, y), fill='#e9d8a1')
+        draw.rectangle((2, y + 1, 13, y + 2), fill='#c5b786')
+        draw.line((4, y + 1, 4, y + 2), fill='#d5c693')
     if part == 0:
         draw.line((1, 0, 14, 0), fill='#6f7663')
         draw.line((2, 1, 13, 1), fill='#e9d89d')
@@ -338,6 +338,10 @@ def make_atlas(legacy):
     terrain += [stone_tiles[4], grass_tiles[3], stone_tiles[6], stone_tiles[7]]
     buildings, door, window = building()
     terrain += legacy[16:26] + [buildings[12], buildings[4]] + legacy[28:32]
+    terrain[20] = prop(3)
+    terrain[21] = slate_cluster()
+    terrain[26] = shop_awning()
+    terrain[27] = market_roof()
     transition_sets = [(grass_tiles[0], path, ('#9cd7a2', '#d3e3a1'), '#85cfa5'),
                        (grass_tiles[0], water_tiles[0], ('#e6d88e', '#d7ddb2'), '#a2d3a0')]
     for base, fill, border, highlight in transition_sets:
@@ -347,11 +351,46 @@ def make_atlas(legacy):
     terrain += stone_tiles
     terrain += buildings + [door, window, chimney()] + [fence(i) for i in range(4)] + [shade(0), shade(1)]
     terrain += oak()
-    terrain += [cliff(i, False, stone_tiles[2]) for i in range(12)]
-    terrain += [cliff(i, True, stone_tiles[5]) for i in range(12)]
-    terrain += [stairs(i) for i in range(3)] + [prop(i) for i in range(5)]
+    terrain += [cliff(i, False, stone_tiles[2], stone_tiles[0]) for i in range(12)]
+    terrain += [cliff(i, True, stone_tiles[5], stone_tiles[4]) for i in range(12)]
+    terrain += [stairs(i, stone_tiles[4]) for i in range(3)] + [prop(i) for i in range(5)]
     assert len(terrain) == 128
     atlas = Image.new('RGBA', (128, 256))
     for i, image in enumerate(terrain):
         atlas.paste(image, (i % 8 * 16, i // 8 * 16))
     return atlas, terrain
+
+
+def shop_awning():
+    image = Image.new('RGBA', (16, 16), '#e5d4a9')
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((0, 0, 15, 3), fill='#69717b')
+    for x in range(16):
+        color = '#dda96d' if x // 4 % 2 == 0 else '#eac78b'
+        draw.line((x, 2, x, 9), fill=color)
+        draw.line((x, 10, x, 11 if x % 4 in (0, 3) else 12), fill='#a87756' if x // 4 % 2 == 0 else '#bc9363')
+    draw.line((0, 2, 15, 2), fill='#eee1ad')
+    draw.line((1, 14, 14, 14), fill='#c9b98f')
+    return image
+
+
+def market_roof():
+    image = Image.new('RGBA', (16, 16), '#b07674')
+    draw = ImageDraw.Draw(image)
+    for y in (0, 4, 8, 12):
+        draw.line((0, y, 15, y), fill='#8b626c')
+        draw.line((0, y+1, 15, y+1), fill='#d6a191')
+        for x in range(2 + y % 8, 16, 8):
+            draw.line((x, y+1, x, y+3), fill='#94686f')
+    return image
+
+
+def slate_cluster():
+    image = Image.new('RGBA', (16, 16))
+    draw = ImageDraw.Draw(image)
+    draw.ellipse((0, 11, 15, 15), fill='#729783')
+    draw.polygon([(1, 10), (3, 5), (7, 3), (10, 5), (12, 3), (15, 7), (15, 11), (10, 14), (3, 13)], fill='#596b68')
+    draw.polygon([(2, 9), (4, 5), (7, 4), (9, 6), (7, 10), (4, 11)], fill='#a8ae9d')
+    draw.polygon([(9, 10), (10, 6), (12, 4), (14, 7), (14, 10), (12, 12)], fill='#8e9b8d')
+    draw.line([(4, 6), (6, 5), (7, 5)], fill='#c7cab0')
+    return image

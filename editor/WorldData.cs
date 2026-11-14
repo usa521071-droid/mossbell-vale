@@ -7,7 +7,8 @@ namespace MossbellVale.Editor
 {
     internal sealed class WorldData
     {
-        private const ushort FormatVersion = 1;
+        private const ushort LegacyFormatVersion = 1;
+        private const ushort FormatVersion = 2;
         private const uint Signature = 0x57475052;
         private const uint ReplaceExisting = 0x1;
         private const uint WriteThrough = 0x8;
@@ -22,6 +23,7 @@ namespace MossbellVale.Editor
         public readonly byte[] Outfit = new byte[4];
         public int SpawnX;
         public int SpawnY;
+        public bool WasMigrated { get; private set; }
 
         public WorldData(int width, int height)
         {
@@ -40,7 +42,9 @@ namespace MossbellVale.Editor
         {
             using (var reader = new BinaryReader(stream))
             {
-                if (reader.ReadUInt32() != Signature || reader.ReadUInt16() != FormatVersion)
+                var signature = reader.ReadUInt32();
+                var version = reader.ReadUInt16();
+                if (signature != Signature || (version != LegacyFormatVersion && version != FormatVersion))
                     throw new InvalidDataException("This is not a Mossbell Vale world file supported by this editor.");
 
                 var world = new WorldData(reader.ReadUInt16(), reader.ReadUInt16());
@@ -52,6 +56,11 @@ namespace MossbellVale.Editor
                 if (stream.ReadByte() != -1)
                     throw new InvalidDataException("The world file contains unexpected data.");
 
+                if (version == LegacyFormatVersion)
+                {
+                    world.MigrateMountains();
+                    world.WasMigrated = true;
+                }
                 world.Validate();
                 return world;
             }
@@ -125,8 +134,30 @@ namespace MossbellVale.Editor
 
         public static bool IsWalkable(byte ground, byte item)
         {
-            return (ground < 8 || ground > 11) && (item == 0 || item == 22 || item == 23 || item == 31 ||
-                item == 86 || item == 87 || item == 95 || (item >= 120 && item <= 125));
+            var blockedGround = (ground >= 8 && ground <= 11) || ground == 61 || (ground >= 108 && ground <= 119);
+            var passableObject = item == 0 || item == 22 || item == 23 || item == 31 ||
+                item == 86 || item == 87 || item == 95 || (item >= 123 && item <= 125);
+            return !blockedGround && passableObject;
+        }
+
+        private void MigrateMountains()
+        {
+            for (var i = 0; i < Ground.Length; i++)
+            {
+                var ground = Ground[i];
+                var item = Objects[i];
+                if (!(ground < 16 || (ground >= 32 && ground < 64)) ||
+                    !(item == 0 || (item >= 16 && item < 32) || (item >= 64 && item < 128)))
+                    throw new InvalidDataException("The legacy world file contains an unknown tile.");
+
+                if (item >= 108 && item <= 122)
+                {
+                    Ground[i] = item;
+                    Objects[i] = 0;
+                }
+                else if (ground == 61)
+                    Ground[i] = 60;
+            }
         }
 
         private void Validate()

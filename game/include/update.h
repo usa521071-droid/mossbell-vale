@@ -4,12 +4,12 @@
 #include "world.h"
 
 #ifndef MOSSBELL_BUILD
-#define MOSSBELL_BUILD 10100
+#define MOSSBELL_BUILD 10200
 #endif
 #ifndef MOSSBELL_VERSION
-#define MOSSBELL_VERSION "1.1.0"
+#define MOSSBELL_VERSION "1.2.0"
 #endif
-#define FIRST_TOWN_REVISION 2
+#define FIRST_TOWN_REVISION 3
 
 typedef enum {
     UPDATE_CHECK, UPDATE_WORLD, UPDATE_GAME

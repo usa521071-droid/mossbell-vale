@@ -1,7 +1,6 @@
 #include "draw.h"
 #include "world.h"
 
-#include <ctype.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
@@ -11,6 +10,26 @@ enum { TILE_BYTES = 128 * 256 * 4, PLAYER_BYTES = 48 * 96 * 4 };
 static unsigned char editedArt[TILE_BYTES + PLAYER_BYTES];
 static const unsigned char *tiles = asset_tiles, *player = asset_player;
 
+static void restoreBaseTile(int id)
+{
+    int offset = (id / 8 * 16 * 128 + id % 8 * 16) * 4;
+    for (int row = 0; row < 16; row++, offset += 128 * 4)
+        memcpy(editedArt + offset, asset_tiles + offset, 16 * 4);
+}
+
+static bool groundPixelsOpaque(void)
+{
+    for (int tile = 0; tile < 128; tile++) {
+        if (!(tile < 16 || (tile >= 32 && tile < 64) || (tile >= 108 && tile <= 122)))
+            continue;
+        int offset = (tile / 8 * 16 * 128 + tile % 8 * 16) * 4 + 3;
+        for (int row = 0; row < 16; row++, offset += 128 * 4)
+            for (int column = 0; column < 16; column++)
+                if (editedArt[offset + column * 4] != 255) return false;
+    }
+    return true;
+}
+
 void resetArt(void)
 {
     tiles = asset_tiles;
@@ -19,21 +38,29 @@ void resetArt(void)
 
 bool loadCustomArt(const char *path)
 {
-    static const unsigned char expected[] = {'R','P','G','A',1,0,0,0};
+    static const unsigned char expected[] = {'R','P','G','A',2,0,0,0};
     unsigned char header[sizeof(expected)];
     resetArt();
     FILE *file = fopen(path, "rb");
     if (!file) return false;
     bool ok = fread(header, 1, sizeof(header), file) == sizeof(header) &&
-        memcmp(header, expected, sizeof(header)) == 0 &&
+        memcmp(header, expected, 4) == 0 &&
+        (header[4] == 1 || header[4] == 2) &&
+        memcmp(header + 5, expected + 5, 3) == 0 &&
         fread(editedArt, 1, sizeof(editedArt), file) == sizeof(editedArt) &&
         fgetc(file) == EOF && !ferror(file);
     fclose(file);
-    if (ok) {
-        tiles = editedArt;
-        player = editedArt + TILE_BYTES;
+    if (!ok) return false;
+    if (header[4] == 1) {
+        static const int moved[] = {20, 21, 60, 61, 62};
+        for (size_t i = 0; i < sizeof(moved) / sizeof(*moved); i++)
+            restoreBaseTile(moved[i]);
+        for (int id = 108; id <= 122; id++) restoreBaseTile(id);
     }
-    return ok;
+    if (!groundPixelsOpaque()) return false;
+    tiles = editedArt;
+    player = editedArt + TILE_BYTES;
+    return true;
 }
 
 static uint16_t pack(uint32_t color)
@@ -76,6 +103,17 @@ static const uint8_t font[][7] = {
 
 static const uint8_t *glyph(unsigned char letter)
 {
+    static const uint8_t lowercase[][7] = {
+        {0,0,14,1,15,17,15}, {16,16,22,25,17,17,30}, {0,0,14,17,16,17,14},
+        {1,1,13,19,17,17,15}, {0,0,14,17,31,16,14}, {6,9,8,30,8,8,8},
+        {0,0,15,17,15,1,14}, {16,16,22,25,17,17,17}, {4,0,12,4,4,4,14},
+        {2,0,6,2,2,18,12}, {16,16,18,20,24,20,18}, {12,4,4,4,4,4,14},
+        {0,0,26,21,21,17,17}, {0,0,22,25,17,17,17}, {0,0,14,17,17,17,14},
+        {0,0,30,17,30,16,16}, {0,0,15,17,15,1,1}, {0,0,22,25,16,16,16},
+        {0,0,15,16,14,1,30}, {8,8,30,8,8,9,6}, {0,0,17,17,17,19,13},
+        {0,0,17,17,17,10,4}, {0,0,17,17,21,21,10}, {0,0,17,10,4,10,17},
+        {0,0,17,17,15,1,14}, {0,0,31,2,4,8,31},
+    };
     static const uint8_t punctuation[][7] = {
         {0,0,0,0,0,4,4}, {0,0,0,0,4,4,8}, {0,4,4,0,4,4,0},
         {0,0,0,31,0,0,0}, {1,1,2,4,8,16,16}, {4,4,4,4,4,0,4},
@@ -85,6 +123,7 @@ static const uint8_t *glyph(unsigned char letter)
     const char *symbols = ".,:-/!?'<>";
     if (letter >= '0' && letter <= '9') return font[letter - '0'];
     if (letter >= 'A' && letter <= 'Z') return font[10 + letter - 'A'];
+    if (letter >= 'a' && letter <= 'z') return lowercase[letter - 'a'];
     for (int i = 0; symbols[i]; i++)
         if (letter == (unsigned char)symbols[i]) return punctuation[i];
     return NULL;
@@ -93,7 +132,7 @@ static const uint8_t *glyph(unsigned char letter)
 void label(Screen screen, int x, int y, const char *text, uint32_t color, int scale)
 {
     for (; *text; text++, x += 6 * scale) {
-        const uint8_t *rows = glyph((unsigned char)toupper((unsigned char)*text));
+        const uint8_t *rows = glyph((unsigned char)*text);
         if (!rows) continue;
         for (int dy = 0; dy < 7; dy++)
             for (int dx = 0; dx < 5; dx++)

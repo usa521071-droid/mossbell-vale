@@ -14,11 +14,12 @@ extern const unsigned int asset_dungeon_size, asset_mountain_size;
 enum { EXPLORE, MENU, WARDROBE, UPDATES, REGIONS };
 enum { CITY, DUNGEON, MOUNTAIN, CUSTOM };
 enum { TILE = 32, TOP_WIDTH = 400, BOTTOM_WIDTH = 320, HEIGHT = 240 };
-static const uint32_t ink = 0x142923, panel = 0x234036, dark = 0x1a322b;
-static const uint32_t border = 0x426353, paper = 0xeceacb, muted = 0xafc9a5, gold = 0xf4c76a;
+static const uint32_t ink = 0xd5e9cd, panel = 0xfffbeb, dark = 0x477b62;
+static const uint32_t border = 0x7bad84, paper = 0x303945, muted = 0x526558, gold = 0x986045;
+static const uint32_t frame = 0x394d58, highlight = 0xfff0b8;
 static const int dx[] = {0, -1, 1, 0}, dy[] = {1, 0, 0, -1};
 static const unsigned keys[] = {KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_UP};
-static const char *const regionNames[] = {"BELLWICK TOWN", "LANTERN CAVERN", "HIGHSTONE PASS", "CUSTOM WORLD"};
+static const char *const regionNames[] = {"Bellwick Town", "Lantern Cavern", "Highstone Pass", "Custom World"};
 static const char *const saves[] = {
     WORLD_DIR "/town.sav", WORLD_DIR "/cave.sav",
     WORLD_DIR "/mountain.sav", WORLD_DIR "/custom.sav",
@@ -49,6 +50,16 @@ static void say(const char *message)
 {
     snprintf(toast, sizeof(toast), "%s", message);
     toastTime = 260;
+}
+
+static void window(Screen screen, int x, int y, int width, int height)
+{
+    fill(screen, x + 2, y + 3, width, height, 0x35475c);
+    fill(screen, x + 2, y, width - 4, height, frame);
+    fill(screen, x, y + 2, width, height - 4, frame);
+    fill(screen, x + 2, y + 2, width - 4, height - 4, border);
+    fill(screen, x + 4, y + 4, width - 8, height - 8, panel);
+    fill(screen, x + 5, y + 4, width - 10, 1, 0xffffff);
 }
 
 static bool loadWorld(int next)
@@ -179,34 +190,33 @@ static void drawWorld(Screen screen)
     }
     if (!playerDrawn) drawWorldPlayer(screen, cameraX, cameraY);
     if (toastTime && mode == EXPLORE) {
-        fill(screen, 12, 186, 376, 44, ink);
-        fill(screen, 12, 186, 376, 2, gold);
-        wrapped(screen, 24, 199, 352, toast, paper);
+        window(screen, 8, 186, 384, 45);
+        wrapped(screen, 22, 197, 354, toast, paper);
+        fill(screen, 375, 218, 7, 2, 0xab5047);
+        fill(screen, 377, 220, 3, 2, 0xab5047);
     }
-}
-
-static void block(Screen screen, int x, int y, int width, int height)
-{
-    fill(screen, x, y, width, height, border);
-    fill(screen, x + 1, y + 1, width - 2, height - 2, panel);
 }
 
 static void heading(Screen screen, const char *title, const char *subtitle)
 {
     fill(screen, 0, 0, BOTTOM_WIDTH, HEIGHT, ink);
-    fill(screen, 0, 0, BOTTOM_WIDTH, 61, dark);
-    fill(screen, 0, 60, BOTTOM_WIDTH, 1, border);
-    drawTile(screen, 15, 13, GLOWBELL, 2);
-    label(screen, 55, 13, title, paper, 2);
-    label(screen, 56, 38, subtitle, muted, 1);
+    fill(screen, 0, 0, BOTTOM_WIDTH, 53, dark);
+    fill(screen, 0, 1, BOTTOM_WIDTH, 3, 0xa1c89b);
+    fill(screen, 0, 52, BOTTOM_WIDTH, 2, frame);
+    fill(screen, 0, 54, BOTTOM_WIDTH, 3, border);
+    drawTile(screen, 14, 10, GLOWBELL, 2);
+    label(screen, 57, 13, title, frame, 2);
+    label(screen, 55, 11, title, 0xfff9d7, 2);
+    label(screen, 55, 36, subtitle, 0xecf7d8, 1);
 }
 
 static void row(Screen screen, int index, int y, const char *text, bool enabled)
 {
     bool active = selected == index;
-    fill(screen, 14, y, 292, 25, active ? border : panel);
-    if (active) fill(screen, 14, y, 3, 25, gold);
-    label(screen, 25, y + 9, text, enabled ? paper : muted, 1);
+    fill(screen, 14, y, 292, 25, border);
+    fill(screen, 16, y + 2, 288, 21, active ? highlight : panel);
+    if (active) label(screen, 23, y + 9, ">", gold, 1);
+    label(screen, 36, y + 9, text, enabled ? paper : muted, 1);
 }
 
 static void drawMinimap(Screen screen)
@@ -224,42 +234,42 @@ static void drawMinimap(Screen screen)
             static const uint32_t terrain[] = {0xb99c8e,0xa88c7d,0xc4a492,0x9f8376,
                 0xa9a493,0x9b9885,0x8da684,0x8d919b};
             uint32_t color = ground < 16 ? colors[ground] :
-                ground < 44 ? colors[4] : ground < 56 ? colors[8] : terrain[ground - 56];
+                ground < 44 ? colors[4] : ground < 56 ? colors[8] :
+                ground < 64 ? terrain[ground - 56] : ground < 120 ? 0x666b63 : 0xe1c88b;
             if (object >= 16 && object <= 18) color = 0x3d6447;
             if (object == 20 || object == 21) color = 0x666453;
             if (object >= 64 && object <= 72) color = 0x6983a3;
             if (object >= 88 && object <= 94) color = 0x3d6447;
             if (object >= 96 && object <= 107) color = 0x875d51;
-            if (object >= 108 && object <= 119) color = 0x626577;
             fill(screen, 24 + px, 92 + py, 1, 1, color);
         }
     }
     int x = 24 + (journey.x * size + size / 2) / world.width;
     int y = 92 + (journey.y * size + size / 2) / world.height;
-    fill(screen, x - 2, y - 2, 5, 5, ink);
-    fill(screen, x - 1, y - 1, 3, 3, gold);
+    fill(screen, x - 2, y - 2, 5, 5, frame);
+    fill(screen, x - 1, y - 1, 3, 3, 0xfff1a7);
 }
 
 static void drawBottom(Screen screen)
 {
     char text[64];
     if (mode == EXPLORE) {
-        heading(screen, "MOSSBELL VALE", regionNames[region]);
-        block(screen, 14, 72, 112, 125);
-        label(screen, 24, 80, "FIELD MAP", muted, 1);
+        heading(screen, "Mossbell Vale", regionNames[region]);
+        window(screen, 14, 67, 112, 130);
+        label(screen, 24, 80, "Field Map", muted, 1);
         drawMinimap(screen);
-        block(screen, 133, 72, 173, 125);
-        label(screen, 144, 85, "GLOWBELLS", muted, 1);
+        window(screen, 133, 67, 173, 130);
+        label(screen, 144, 85, "Glowbells", muted, 1);
         snprintf(text, sizeof(text), "%d/%d", found, total);
         label(screen, 144, 103, text, gold, 2);
         const char *goal = journey.completed ? "The arch is lit. The vale is yours to explore." :
             !total ? "Explore the vale and discover what lies along the trail." :
             found == total ? "Ring the stone arch." : "Find the glowbells scattered across the vale.";
         wrapped(screen, 144, 135, 147, goal, paper);
-        fill(screen, 14, 207, 292, 24, panel);
+        window(screen, 14, 207, 292, 26);
         label(screen, 24, 216, "A TALK   B RUN   X ZOOM   START MENU", muted, 1);
     } else if (mode == MENU) {
-        heading(screen, "TRAIL MENU", "UP / DOWN  SELECT     A  OPEN");
+        heading(screen, "Trail Menu", "Up / Down  Select     A  Open");
         row(screen, 0, 70, "Wardrobe", true);
         row(screen, 1, 100, "Choose a region", true);
         row(screen, 2, 130, "Updates", true);
@@ -267,28 +277,29 @@ static void drawBottom(Screen screen)
         row(screen, 4, 190, "Return to Homebrew / HOME", true);
         label(screen, 24, 224, "B RETURN TO THE VALE", muted, 1);
     } else if (mode == REGIONS) {
-        heading(screen, "REGIONS", "UP / DOWN  SELECT     A  TRAVEL");
+        heading(screen, "Regions", "Up / Down  Select     A  Travel");
         for (int i = 0; i < 4; i++)
             row(screen, i, 72 + i * 30, regionNames[i], i != CUSTOM || hasCustomWorld);
         label(screen, 24, 224, "B BACK", muted, 1);
     } else if (mode == WARDROBE) {
-        heading(screen, "WARDROBE", "LEFT / RIGHT  CHANGE     B  DONE");
+        heading(screen, "Wardrobe", "Left / Right  Change     B  Done");
         for (int i = 0; i < OUTFIT_PARTS; i++) {
             snprintf(text, sizeof(text), "%s  < %s >", outfitNames[i], colorNames[i][journey.outfit[i]]);
-            fill(screen, 14, 77 + i * 35, 185, 26, selected == i ? border : panel);
+            fill(screen, 14, 77 + i * 35, 185, 26, border);
+            fill(screen, 16, 79 + i * 35, 181, 22, selected == i ? highlight : panel);
             fill(screen, 179, 84 + i * 35, 13, 12, outfitColors[i][journey.outfit[i]][0]);
             label(screen, 24, 87 + i * 35, text, paper, 1);
         }
-        block(screen, 207, 77, 99, 131);
+        window(screen, 207, 77, 99, 131);
         drawPlayer(screen, 233, 97, direction, 0, 3, journey.outfit);
         label(screen, 222, 184, "A  TURN", muted, 1);
         label(screen, 24, 224, "OUTFIT SAVES WHEN YOU LEAVE", muted, 1);
     } else {
-        heading(screen, "UPDATES", "GAME " MOSSBELL_VERSION "  /  GITHUB");
+        heading(screen, "Updates", "Game " MOSSBELL_VERSION "  /  GitHub");
         row(screen, 0, 72, "Check for updates", !worker);
         row(screen, 1, 102, "Download official world", !worker && update.worldRevision > installedWorldRevision);
         row(screen, 2, 132, "Download game CIA", !worker && update.build > MOSSBELL_BUILD);
-        block(screen, 14, 167, 292, 54);
+        window(screen, 14, 167, 292, 54);
         wrapped(screen, 24, 177, 274, worker ? "Connecting to GitHub. Please wait..." : update.status, paper);
         label(screen, 24, 229, "A SELECT   B BACK", muted, 1);
     }

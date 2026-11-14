@@ -446,7 +446,7 @@ def main():
     for index in range(len(tiles)):
         art = studio_override(str(index), (16, 16))
         if art is not None:
-            if (index < 16 or 32 <= index <= 63) and art.getchannel('A').getextrema() != (255, 255):
+            if (index < 16 or 32 <= index <= 63 or 108 <= index <= 122) and art.getchannel('A').getextrema() != (255, 255):
                 raise ValueError(f'Ground tile {index} must be opaque')
             tiles[index] = art
             atlas.paste(art, (index % 8 * 16, index // 8 * 16))

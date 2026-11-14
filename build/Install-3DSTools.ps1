@@ -38,10 +38,11 @@ $zipPackages = @(
         Hash = 'acb4e8111511749dc7a3ebedca9b04190e37a17afeb73f55d4425dbf0b90fad9'
     },
     @{
-        Name = 'makerom'
+        # Makerom 0.19.0 silently discards the CIA minor version.
+        Name = 'makerom-0.18.4'
         Binary = 'makerom.exe'
-        Url = 'https://github.com/3DSGuy/Project_CTR/releases/download/makerom-v0.19.0/makerom-v0.19.0-win_x86_64.zip'
-        Hash = '88df4455e60556374e202d507f54ee03fac7493ec9554ab853157524b6d69db0'
+        Url = 'https://github.com/3DSGuy/Project_CTR/releases/download/makerom-v0.18.4/makerom-v0.18.4-win_x86_64.zip'
+        Hash = 'd743507dc66d4c6f8efcce05ff8f5f47163a60e54e0e0c57fa12ec2f54acdf2f'
     },
     @{
         Name = 'bannertool'

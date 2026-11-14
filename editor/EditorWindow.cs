@@ -23,7 +23,7 @@ namespace MossbellVale.Editor
         private readonly List<WorldData> redo = new List<WorldData>();
         private readonly RadioButton[] tileButtons = new RadioButton[16];
         private readonly ComboBox tileGroup = MakeSelector("Tile collection");
-        private readonly ComboBox stampChoice = MakeSelector("Object stamp");
+        private readonly ComboBox stampChoice = MakeSelector("Tile stamp");
         private readonly ComboBox terrainChoice = MakeSelector("Region brush");
         private readonly ComboBox[] outfitChoices = new ComboBox[4];
         private readonly Panel mapViewport = new Panel { AutoScroll = true, Dock = DockStyle.Fill, BackColor = Forest };
@@ -47,6 +47,7 @@ namespace MossbellVale.Editor
         private int cachedArtRevision = -1;
         private bool refreshingPalette;
         private bool drawingRegion;
+        private bool upgradeAvailable;
         private Point regionStart;
         private WorldData strokeStart;
         private string filename;
@@ -146,6 +147,14 @@ namespace MossbellVale.Editor
                     {
                         var names = new[] { "world", "dungeon", "mountain" };
                         LoadWorld(GameArt.ReadPreset(names[selected - 1]), null, label + " preset opened");
+                        if (selected == 3)
+                        {
+                            groundBrush = 108;
+                            if (groundTab.Checked)
+                                ChangeLayer(false);
+                            else
+                                groundTab.Checked = true;
+                        }
                     });
             };
             commands.Controls.Add(presets);
@@ -527,7 +536,7 @@ namespace MossbellVale.Editor
             }
 
             var mode = terrainChoice.SelectedIndex;
-            var ground = mode == 1 ? (byte)4 : mode == 2 ? (byte)56 : (byte)61;
+            var ground = mode == 1 ? (byte)4 : mode == 2 ? (byte)56 : (byte)62;
             var face = mode == 1 ? 32 : mode == 2 ? 96 : 108;
             for (var y = region.Top; y < region.Bottom; y++)
             {
@@ -538,8 +547,10 @@ namespace MossbellVale.Editor
                     var original = world.Objects[cell];
                     if (mode == 1)
                         SetCell(new Point(x, y), edge < 0 ? ground : (byte)(face + edge), original);
-                    else
+                    else if (mode == 2)
                         SetCell(new Point(x, y), ground, edge < 0 ? original : (byte)(face + edge));
+                    else
+                        SetCell(new Point(x, y), edge < 0 ? ground : (byte)(face + edge), edge < 0 ? original : (byte)0);
                 }
             }
             map.Invalidate();
@@ -565,7 +576,11 @@ namespace MossbellVale.Editor
                     if (tile.X >= world.Width || tile.Y >= world.Height)
                         continue;
                     var i = tile.Y * world.Width + tile.X;
-                    SetCell(tile, world.Ground[i], (byte)(stamp.First + y * stamp.Width + x));
+                    var id = (byte)(stamp.First + y * stamp.Width + x);
+                    if (TileCatalog.IsGround(id))
+                        SetCell(tile, id, 0);
+                    else
+                        SetCell(tile, world.Ground[i], id);
                 }
         }
 
@@ -597,7 +612,11 @@ namespace MossbellVale.Editor
             else if (objects)
                 item = (byte)objectBrush;
             else
+            {
                 ground = (byte)groundBrush;
+                if (TileCatalog.IsMountainStructure(ground))
+                    item = 0;
+            }
 
             SetCell(tile, ground, item);
         }
@@ -660,6 +679,7 @@ namespace MossbellVale.Editor
             art.LoadBundle(bundle);
             ApplyWorld(data);
             filename = path;
+            upgradeAvailable = path != null && data.WasMigrated;
             saved = world.Copy();
             savedArt = CurrentArt();
             RefreshBrushes();
@@ -667,7 +687,7 @@ namespace MossbellVale.Editor
             redo.Clear();
             CenterOnSpawn();
             UpdateCommands();
-            SetStatus(message);
+            SetStatus(upgradeAvailable ? message + " · Save to update the file format." : message);
         }
 
         private void CenterOnSpawn()
@@ -710,7 +730,7 @@ namespace MossbellVale.Editor
             var dirty = HasChanges();
             var name = filename == null ? "Untitled World" : Path.GetFileNameWithoutExtension(filename);
             Text = (dirty ? "* " : "") + name + " – Mossbell Vale Editor";
-            saveButton.Enabled = dirty || filename == null;
+            saveButton.Enabled = dirty || filename == null || upgradeAvailable;
             undoButton.Enabled = undo.Count > 0;
             redoButton.Enabled = redo.Count > 0;
         }
@@ -767,6 +787,7 @@ namespace MossbellVale.Editor
             {
                 SaveProject(target, Path.ChangeExtension(target, ".rpga"));
                 filename = target;
+                upgradeAvailable = false;
                 saved = world.Copy();
                 savedArt = CurrentArt();
                 UpdateCommands();
