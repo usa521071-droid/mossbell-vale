@@ -50,10 +50,15 @@ static bool legacyTile(int ground, int object)
          (object >= 64 && object < 128));
 }
 
+bool worldGroundTile(int tile)
+{
+    return (tile >= 0 && tile < 16) || (tile >= 32 && tile < 64) ||
+        (tile >= 108 && tile <= 122) || (tile >= 128 && tile <= 143);
+}
+
 static bool currentTile(int ground, int object)
 {
-    return (ground < 16 || (ground >= 32 && ground < 64) ||
-            (ground >= 108 && ground <= 122)) &&
+    return worldGroundTile(ground) &&
         (object == 0 || (object >= 16 && object < 32) ||
          (object >= 64 && object < 108) || (object >= 123 && object < 128));
 }

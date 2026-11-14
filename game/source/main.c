@@ -23,6 +23,8 @@ static World world;
 static Journey journey;
 static Project project;
 static ProjectProgress progress;
+static Creature actors[PROJECT_MAX_MAPS][PROJECT_MAX_EVENTS];
+static unsigned sceneTicks;
 static int mapIndex = -1;
 static Update update, work;
 static UpdateAction pendingAction;
@@ -91,6 +93,7 @@ static bool loadGame(void)
 {
     projectClose(&project);
     memset(&progress, 0, sizeof(progress));
+    memset(actors, 0, sizeof(actors));
     mapIndex = -1;
     direction = 0;
     lastDirection = -1;
@@ -98,11 +101,17 @@ static bool loadGame(void)
     useCustom = projectRead(&project, CUSTOM_PROJECT, NULL);
     unsigned revision = 0;
     bool updated = false;
+    bool legacyOnline = false;
     if (!useCustom) {
         projectClose(&project);
         useCustom = worldRead(&world, CUSTOM_WORLD);
         if (!useCustom) {
             updated = projectRead(&project, ONLINE_PROJECT, &revision);
+            if (updated && revision < 2) {
+                projectClose(&project);
+                updated = false;
+                legacyOnline = true;
+            }
             if (!updated) {
                 installedWorldRevision = 0;
                 projectClose(&project);
@@ -117,9 +126,27 @@ static bool loadGame(void)
             loadArtBytes(asset_project_art, asset_project_art_size);
     }
     if (project.count) {
+        for (int i = 0; i < project.count; i++)
+            for (unsigned j = 0; j < project.maps[i].eventCount; j++) {
+                const ProjectEvent *event = &project.maps[i].events[j];
+                actors[i][j].x = event->x;
+                actors[i][j].y = event->y;
+            }
         savePath = useCustom ? WORLD_DIR "/custom-project.sav" :
             updated ? WORLD_DIR "/online-project.sav" : WORLD_DIR "/project.sav";
-        int index = projectResume(&project, &progress, &journey, savePath);
+        uint32_t previousSignature = 0;
+#if !MOSSBELL_PUBLISHED
+        if (!useCustom) previousSignature = updated ? 0x53c744c0u : 0x5b6f40cau;
+#endif
+        int index = -1;
+#if !MOSSBELL_PUBLISHED
+        if (legacyOnline)
+            index = projectResume(&project, &progress, &journey,
+                WORLD_DIR "/online-project.sav", 0x53c744c0u);
+#else
+        (void)legacyOnline;
+#endif
+        if (index < 0) index = projectResume(&project, &progress, &journey, savePath, previousSignature);
         openMap(index >= 0 ? index : project.start);
         if (index < 0) journeyNew(&world, &journey);
         total = project.bells;
@@ -142,7 +169,13 @@ static void interact(void)
     int x = journey.x + dx[direction], y = journey.y + dy[direction];
     const Map *map = activeMap();
     const ProjectEvent *event = map ? mapEvent(map, x, y) : NULL;
-    if (event && event->type != PROJECT_WARP) {
+    int actor = map ? creatureAt(map, actors[mapIndex], x, y) : -1;
+    if (actor >= 0) {
+        const char *text = map->events[actor].text;
+        say(text[0] ? text : "The little pink blob blinks at you.");
+        return;
+    }
+    if (event && (event->type == PROJECT_SIGN || event->type == PROJECT_NPC)) {
         say(event->text);
         return;
     }
@@ -219,7 +252,8 @@ static void move(unsigned held, unsigned pressed)
     direction = next;
     int x = journey.x + dx[next], y = journey.y + dy[next];
     const Map *map = activeMap();
-    if (!(map ? mapWalkable(map, &world, x, y) : worldWalkable(&world, x, y))) return;
+    if (map ? (!mapWalkable(map, &world, x, y) ||
+        creatureAt(map, actors[mapIndex], x, y) >= 0) : !worldWalkable(&world, x, y)) return;
     journey.x = x;
     journey.y = y;
     elapsed = TILE;
@@ -249,6 +283,7 @@ static void drawWorld(Screen screen)
             drawTile(screen, x * tile - cameraX, y * tile - cameraY,
                 world.ground[y * world.width + x], viewScale);
     bool playerDrawn = false;
+    const Map *map = activeMap();
     for (int y = top; y <= bottom; y++) {
         if (!playerDrawn && y * TILE > yPixel) {
             drawWorldPlayer(screen, cameraX, cameraY);
@@ -260,10 +295,22 @@ static void drawWorld(Screen screen)
             if (object && !(object == GLOWBELL && journeyFound(&journey, index)))
                 drawTile(screen, x * tile - cameraX, y * tile - cameraY, object, viewScale);
         }
-        const Map *map = activeMap();
         if (map) {
             for (unsigned i = 0; i < map->eventCount; i++) {
                 const ProjectEvent *event = &map->events[i];
+                if (event->type == PROJECT_CREATURE) {
+                    const Creature *actor = &actors[mapIndex][i];
+                    if (actor->y != y) continue;
+                    int x = actor->x * tile - cameraX, py = actor->y * tile - cameraY;
+                    if (actor->interpolation) {
+                        x += ((int)actor->fromX - actor->x) * tile * actor->interpolation / 8;
+                        py += ((int)actor->fromY - actor->y) * tile * actor->interpolation / 8;
+                    }
+                    int frame = actor->interpolation ? 1 + (actor->interpolation < 4) :
+                        sceneTicks % 64 < 6 ? 2 : 0;
+                    drawCreature(screen, x, py, frame, viewScale);
+                    continue;
+                }
                 if (event->y != y || event->x < left || event->x > right) continue;
                 int x = event->x * tile - cameraX, py = y * tile - cameraY;
                 if (event->type == PROJECT_NPC) {
@@ -530,6 +577,11 @@ int main(void)
         pollUpdate();
         hidScanInput();
         if (!input(hidKeysDown(), hidKeysHeld())) break;
+        if (mode == EXPLORE) {
+            sceneTicks++;
+            if (activeMap()) creatureTick(activeMap(), &world, actors[mapIndex], journey.x, journey.y,
+                journey.x - (elapsed ? dx[direction] : 0), journey.y - (elapsed ? dy[direction] : 0));
+        }
         Screen top = {(uint16_t *)gfxGetFramebuffer(GFX_TOP, GFX_LEFT, NULL, NULL), TOP_WIDTH, HEIGHT};
         Screen bottom = {(uint16_t *)gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, NULL, NULL), BOTTOM_WIDTH, HEIGHT};
         drawWorld(top);

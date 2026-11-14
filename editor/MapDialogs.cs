@@ -103,7 +103,8 @@ namespace MossbellVale.Editor
             MaximizeBox = false;
             MinimizeBox = false;
             ShowInTaskbar = false;
-            type.Items.AddRange(new object[] { "Warp (step onto tile)", "Sign (press A)", "NPC (press A)" });
+            type.Items.AddRange(new object[] { "Warp (step onto tile)", "Sign (press A)", "NPC (press A)",
+                "Creature (roaming pink blob)" });
             type.SelectedIndex = connectionsOnly ? 0 : existing == null ? 1 : (int)existing.Type - 1;
             type.Enabled = !connectionsOnly;
             foreach (var map in project.Maps)
@@ -180,7 +181,9 @@ namespace MossbellVale.Editor
                 else
                 {
                     var text = message.Text.Trim();
-                    ProjectData.ValidateText(text, 1, 90, "Message");
+                    ProjectData.ValidateText(text, kind == MapEventType.Creature ? 0 : 1, 90, "Message");
+                    if (kind == MapEventType.Creature && !source.World.CanWalk(tile.X, tile.Y))
+                        throw new InvalidDataException("Choose a walkable home tile for the creature.");
                     Result = new MapEvent(kind, tile.X, tile.Y, text);
                 }
                 DialogResult = DialogResult.OK;

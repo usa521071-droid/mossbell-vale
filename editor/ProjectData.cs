@@ -6,7 +6,7 @@ using System.Text;
 
 namespace MossbellVale.Editor
 {
-    internal enum MapEventType : byte { Warp = 1, Sign = 2, Npc = 3 }
+    internal enum MapEventType : byte { Warp = 1, Sign = 2, Npc = 3, Creature = 4 }
 
     internal sealed class MapEvent
     {
@@ -61,7 +61,7 @@ namespace MossbellVale.Editor
         public readonly List<ProjectMap> Maps = new List<ProjectMap>();
         public int StartMap;
         private const uint Signature = 0x50475052;
-        private const ushort Version = 1;
+        private const ushort Version = 2;
         private const int MaximumWorldBytes = 32786;
 
         public ProjectData(string name, string group, WorldData world)
@@ -121,7 +121,9 @@ namespace MossbellVale.Editor
         {
             using (var reader = new BinaryReader(stream, Encoding.ASCII))
             {
-                if (reader.ReadUInt32() != Signature || reader.ReadUInt16() != Version)
+                var format = reader.ReadUInt32();
+                var version = reader.ReadUInt16();
+                if (format != Signature || (version != 1 && version != Version))
                     throw new InvalidDataException("The selected file is not a supported Mossbell Vale project.");
                 int count = reader.ReadUInt16();
                 var project = new ProjectData { StartMap = reader.ReadUInt16() };
@@ -256,11 +258,17 @@ namespace MossbellVale.Editor
                 return;
             }
 
-            if (item.Type != MapEventType.Sign && item.Type != MapEventType.Npc)
+            if (item.Type != MapEventType.Sign && item.Type != MapEventType.Npc && item.Type != MapEventType.Creature)
                 throw new InvalidDataException(label + " has an unknown event type.");
             if (item.TargetMap != 0 || item.TargetX != 0 || item.TargetY != 0)
                 throw new InvalidDataException(label + " has a warp destination for a sign or NPC.");
-            ValidateText(item.Text, 1, 90, "Sign or NPC message");
+            if (item.Type == MapEventType.Creature)
+            {
+                ValidateText(item.Text, 0, 90, "Creature message");
+                if (!map.World.CanWalk(item.X, item.Y))
+                    throw new InvalidDataException("Creature at " + label + " needs a walkable home tile.");
+            }
+            else ValidateText(item.Text, 1, 90, "Sign or NPC message");
         }
 
         public static MapEvent FindEvent(WorldData world, int x, int y)

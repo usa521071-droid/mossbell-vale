@@ -9,17 +9,22 @@ namespace MossbellVale.Editor
     internal sealed class GameArt : IDisposable
     {
         public const int TileSize = 16;
-        public const int TileCount = 128;
+        public const int TileCount = 144;
         public const int PlayerWidth = 16;
         public const int PlayerHeight = 24;
         private const int TilesWidth = 128;
-        private const int TilesHeight = 256;
+        private const int TilesHeight = 288;
+        private const int OldTileBytes = TilesWidth * 256 * 4;
         private const int PlayerSheetWidth = 48;
         private const int PlayerSheetHeight = 96;
-        private const int ArtFileSize = 8 + (TilesWidth * TilesHeight + PlayerSheetWidth * PlayerSheetHeight) * 4;
+        private const int CreatureWidth = 48;
+        private const int CreatureHeight = 16;
+        private const int TileBytes = TilesWidth * TilesHeight * 4;
+        private const int PlayerBytes = PlayerSheetWidth * PlayerSheetHeight * 4;
+        private const int ArtFileSize = 8 + TileBytes + PlayerBytes + CreatureWidth * CreatureHeight * 4;
         private const int VersionOffset = 4;
         private const byte LegacyVersion = 1;
-        private static readonly byte[] Header = { (byte)'R', (byte)'P', (byte)'G', (byte)'A', 2, 0, 0, 0 };
+        private static readonly byte[] Header = { (byte)'R', (byte)'P', (byte)'G', (byte)'A', 3, 0, 0, 0 };
 
         public static readonly string[][] PaletteNames = {
             new[] { "Rose", "Pine", "Gold", "Lilac", "Sky", "Berry" },
@@ -42,12 +47,14 @@ namespace MossbellVale.Editor
         private readonly byte[] defaultBundle;
         private Bitmap tiles;
         private Bitmap player;
+        private Bitmap creature;
         public int Revision { get; private set; }
 
         public GameArt()
         {
             tiles = ReadBitmap("tiles.png");
             player = ReadBitmap("player.png");
+            creature = ReadBitmap("blob.png");
             defaultBundle = ToBundle();
         }
 
@@ -63,6 +70,7 @@ namespace MossbellVale.Editor
             var offset = Header.Length;
             WriteBitmap(bytes, ref offset, tiles);
             WriteBitmap(bytes, ref offset, player);
+            WriteBitmap(bytes, ref offset, creature);
             return bytes;
         }
 
@@ -70,34 +78,42 @@ namespace MossbellVale.Editor
         {
             if (bytes == null)
                 bytes = defaultBundle;
-            if (bytes.Length != ArtFileSize)
+            if (bytes.Length < Header.Length)
                 throw new InvalidDataException("The art bundle has an incorrect size.");
-            bool legacy = bytes[VersionOffset] == LegacyVersion;
+            var version = bytes[VersionOffset];
+            bool legacy = version == LegacyVersion || version == 2;
+            if (bytes.Length != (legacy ? Header.Length + OldTileBytes + PlayerBytes : ArtFileSize))
+                throw new InvalidDataException("The art bundle has an incorrect size.");
             for (var i = 0; i < Header.Length; i++)
                 if (bytes[i] != Header[i] && !(legacy && i == VersionOffset))
                     throw new InvalidDataException("The art bundle is missing a supported RPGA header.");
 
             if (legacy)
-                bytes = MigrateMountains(bytes);
+                bytes = MigrateArt(bytes, version);
 
             var offset = Header.Length;
             using (var grounds = ReadBitmap(bytes, ref offset, TilesWidth, TilesHeight))
             using (var actor = ReadBitmap(bytes, ref offset, PlayerSheetWidth, PlayerSheetHeight))
+            using (var blob = ReadBitmap(bytes, ref offset, CreatureWidth, CreatureHeight))
             {
                 ValidateOpaqueGround(grounds);
                 tiles.Dispose();
                 player.Dispose();
+                creature.Dispose();
                 tiles = new Bitmap(grounds);
                 player = new Bitmap(actor);
+                creature = new Bitmap(blob);
             }
             Revision++;
         }
 
-        private byte[] MigrateMountains(byte[] bytes)
+        private byte[] MigrateArt(byte[] bytes, byte version)
         {
-            var result = (byte[])bytes.Clone();
-            result[VersionOffset] = Header[VersionOffset];
-            for (var id = 0; id < TileCount; id++)
+            var result = (byte[])defaultBundle.Clone();
+            Buffer.BlockCopy(bytes, Header.Length, result, Header.Length, OldTileBytes);
+            Buffer.BlockCopy(bytes, Header.Length + OldTileBytes, result, Header.Length + TileBytes, PlayerBytes);
+            if (version != LegacyVersion) return result;
+            for (var id = 0; id < 128; id++)
             {
                 if (id != 20 && id != 21 && id != 60 && id != 62 && !TileCatalog.IsMountainStructure(id))
                     continue;
@@ -152,6 +168,27 @@ namespace MossbellVale.Editor
         {
             var bounds = SpriteRegion(false, id);
             graphics.DrawImage(tiles, destination, bounds.X, bounds.Y, bounds.Width, bounds.Height, GraphicsUnit.Pixel);
+        }
+
+        public void DrawCreature(Graphics graphics, Rectangle destination, int frame)
+        {
+            graphics.DrawImage(creature, destination, frame * TileSize, 0, TileSize, TileSize, GraphicsUnit.Pixel);
+        }
+
+        public Bitmap GetCreatureFrame(int frame)
+        {
+            return creature.Clone(new Rectangle(frame * TileSize, 0, TileSize, TileSize),
+                System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+        }
+
+        public void SetCreatureFrame(int frame, Bitmap pixels)
+        {
+            if (pixels.Size != new Size(TileSize, TileSize))
+                throw new ArgumentException("The creature sprite must be 16 × 16 pixels.", "pixels");
+            for (var y = 0; y < TileSize; y++)
+                for (var x = 0; x < TileSize; x++)
+                    creature.SetPixel(frame * TileSize + x, y, pixels.GetPixel(x, y));
+            Revision++;
         }
 
         public static void DrawPlayer(Graphics graphics, Bitmap sprite, int direction, int frame, Rectangle destination)
@@ -257,6 +294,7 @@ namespace MossbellVale.Editor
         {
             tiles.Dispose();
             player.Dispose();
+            creature.Dispose();
         }
     }
 }

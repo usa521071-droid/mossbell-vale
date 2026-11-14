@@ -8,6 +8,7 @@ from leafgreen_player import frames
 from presets import make_presets
 from region import make_project
 from tileset import make_atlas
+from vertical_route import blob_sheet
 
 
 ASSETS = Path(__file__).resolve().parents[2] / 'assets'
@@ -81,6 +82,7 @@ def main():
     ASSETS.mkdir(exist_ok=True)
     atlas, tiles = make_atlas()
     player = frames()
+    blob = blob_sheet()
     if options.overrides:
         player = studio_override(options.overrides, 'player', (48, 96)) or player
         for index in range(12):
@@ -90,15 +92,15 @@ def main():
         for index in range(len(tiles)):
             art = studio_override(options.overrides, str(index), (16, 16))
             if art is not None:
-                if (index < 16 or 32 <= index <= 63 or 108 <= index <= 122) and art.getchannel('A').getextrema() != (255, 255):
+                if (index < 16 or 32 <= index <= 63 or 108 <= index <= 122 or index >= 128) and art.getchannel('A').getextrema() != (255, 255):
                     raise ValueError(f'Ground tile {index} must be opaque')
                 tiles[index] = art
                 atlas.paste(art, (index % 8 * 16, index // 8 * 16))
-    for name, image in [('tiles', atlas), ('player', player)]:
+    for name, image in [('tiles', atlas), ('player', player), ('blob', blob)]:
         image.save(ASSETS / f'{name}.png', optimize=True)
         (ASSETS / f'{name}.rgba').write_bytes(image.tobytes())
     preview = make_presets(ASSETS, tiles, player)
-    make_project(ASSETS, tiles, player)
+    make_project(ASSETS, tiles, player, blob)
     make_icon(tiles)
     make_banner(preview, tiles)
 

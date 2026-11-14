@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string] $Version = '1.3.1',
+    [string] $Version = '1.4.0',
     [string] $ToolRoot,
     [string] $OutputDirectory,
     [string] $Title = 'Mossbell Vale',
@@ -109,6 +109,7 @@ $githubDefine
     $assetPaths = [ordered]@{
         tiles = 'assets/tiles.rgba'
         player = 'assets/player.rgba'
+        blob = 'assets/blob.rgba'
         world = 'assets/world.rpgw'
         dungeon = 'assets/dungeon.rpgw'
         mountain = 'assets/mountain.rpgw'
@@ -116,9 +117,14 @@ $githubDefine
         project = 'assets/project.rpgp'
         project_art = 'assets/project-art.rpga'
     }
-    $tiles = Get-Item -LiteralPath (Join-Path $repo $assetPaths.tiles)
-    if ($tiles.Length -ne 128 * 256 * 4) {
-        throw 'assets/tiles.rgba must contain a 128 x 256 atlas in 32-bit RGBA format.'
+    $spriteDimensions = @{ tiles = @(128, 288); player = @(48, 96); blob = @(48, 16) }
+    foreach ($sprite in $spriteDimensions.GetEnumerator()) {
+        $width, $height = $sprite.Value
+        $path = $assetPaths[$sprite.Key]
+        $file = Get-Item -LiteralPath (Join-Path $repo $path)
+        if ($file.Length -ne $width * $height * 4) {
+            throw "$path must contain a $width x $height sheet in 32-bit RGBA format."
+        }
     }
     $assembly = foreach ($entry in $assetPaths.GetEnumerator()) {
         $source = Join-Path $repo $entry.Value

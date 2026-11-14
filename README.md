@@ -25,7 +25,11 @@ Open `MossbellValeEditor.exe` from the same release. The project tree groups set
 
 Place glowbells on walkable terrain and leave room beside trail signs, NPCs and stone arches. To return to the built-in project after SD testing, move the exported project file out of the game's folder.
 
-To shape a mountain quickly, select **Mountain plateau** from the region brush menu and drag a rectangle. Use the **Stairs** ground stamp to cut a walkable route through a cliff.
+To shape a mountain quickly, select **Mountain plateau** from the region brush menu and drag a rectangle. Use the stairs and ladder ground stamps to cut routes through cliffs. East and west stairs run across the grid. Ladders run up and down. In **Events**, place a **Creature** on a walkable tile and optionally add a message. The pink blob roams within two tiles of that spot. Edit the blob's three 16×16 frames in **Sprite Studio → Pink blob**.
+
+## Playtest in the editor
+
+Press **F5** or click **Playtest** to start on the selected map. **Shift+F5** starts at the project's configured entry point. Move with **arrows** or **WASD**, hold **Shift** to run, and use **Z** or **Enter** to interact. Test your current maps, warps, collision, and art before publishing. Restart or exit without changing the project.
 
 ## Publish a CIA from the editor
 
@@ -53,10 +57,10 @@ The build writes the CIA, 3DSX and editor EXE to `dist`. The 3DS tool installer 
 
 The RPGW v2 map starts with four ASCII bytes (`RPGW`), followed by five little-endian 16-bit values (format version, width, height, spawn X, spawn Y), four palette bytes (shirt, pants, hair, skin), then two row-major byte arrays for ground and objects. Dimensions are 8–128 tiles per side. Loading a v1 map migrates its existing mountain ledges and stairs to the ground layer.
 
-The RPGA v2 art sidecar starts with the bytes `52 50 47 41 02 00 00 00`, followed by the 128×256 tile sheet and the 48×96 player sheet in scanline RGBA order. Each tile is 16×16. The player sheet uses 16×24 frames with rows for down, left, right and up. Loading v1 art keeps compatible custom sprites and updates the tile slots whose layer or collision changed.
+The RPGA v3 art sidecar starts with the bytes `52 50 47 41 03 00 00 00`, followed by the 128×288 tile sheet, 48×96 player sheet, and 48×16 creature sheet in scanline RGBA order. Each tile and creature frame is 16×16. The player sheet uses 16×24 frames with rows for down, left, right and up. Older art bundles load with the new stairs, ladders and creature art filled in.
 
-RPGP v1 stores up to 16 named maps. Each entry contains an RPGW grid, one movement byte per cell, and up to 64 warp, sign or NPC events. The map IDs are stable within a project, so renaming a map preserves its links.
+RPGP v2 stores up to 16 named maps. Each entry contains an RPGW grid, one movement byte per cell, and up to 64 warp, sign, NPC or creature events. The map IDs are stable within a project, so renaming a map preserves its links. RPGP v1 projects can still open.
 
-The official updater reads `updates/project-catalog.txt`. The catalog is `MVB1 <build> <world-revision> <cia-sha256>`, where build is `major*10000 + minor*100 + patch`. Publish `MossbellVale.cia` on the matching `vMAJOR.MINOR.PATCH` GitHub release and put the official project at `updates/project-<revision>.rpgp`. For a CIA built in the editor, the release's `catalog.txt` is used instead.
+The official updater reads `updates/project-catalog-v2.txt`. The catalog is `MVB1 <build> <world-revision> <cia-sha256>`, where build is `major*10000 + minor*100 + patch`. Publish `MossbellVale.cia` on the matching `vMAJOR.MINOR.PATCH` GitHub release and put the official project at `updates/project-<revision>.rpgp`. For a CIA built in the editor, the release's `catalog.txt` is used instead.
 
 The 3DS build uses [devkitARM and libctru](https://github.com/devkitPro/libctru), [libcurl](https://curl.se/), [Mbed TLS](https://github.com/Mbed-TLS/mbedtls), and [zlib](https://zlib.net/). The included CA bundle is [curl's Mozilla CA extract](https://curl.se/docs/caextract.html), distributed under MPL 2.0.

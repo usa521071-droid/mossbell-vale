@@ -5,10 +5,11 @@
 #include <stdio.h>
 #include <string.h>
 
-extern const unsigned char asset_tiles[], asset_player[];
-enum { TILE_BYTES = 128 * 256 * 4, PLAYER_BYTES = 48 * 96 * 4 };
-static unsigned char editedArt[TILE_BYTES + PLAYER_BYTES];
-static const unsigned char *tiles = asset_tiles, *player = asset_player;
+extern const unsigned char asset_tiles[], asset_player[], asset_blob[];
+enum { OLD_TILE_BYTES = 128 * 256 * 4, TILE_BYTES = 128 * 288 * 4,
+    PLAYER_BYTES = 48 * 96 * 4, CREATURE_BYTES = 48 * 16 * 4 };
+static unsigned char editedArt[TILE_BYTES + PLAYER_BYTES + CREATURE_BYTES];
+static const unsigned char *tiles = asset_tiles, *player = asset_player, *creature = asset_blob;
 
 static void restoreBaseTile(int id)
 {
@@ -19,9 +20,8 @@ static void restoreBaseTile(int id)
 
 static bool groundPixelsOpaque(void)
 {
-    for (int tile = 0; tile < 128; tile++) {
-        if (!(tile < 16 || (tile >= 32 && tile < 64) || (tile >= 108 && tile <= 122)))
-            continue;
+    for (int tile = 0; tile < 144; tile++) {
+        if (!worldGroundTile(tile)) continue;
         int offset = (tile / 8 * 16 * 128 + tile % 8 * 16) * 4 + 3;
         for (int row = 0; row < 16; row++, offset += 128 * 4)
             for (int column = 0; column < 16; column++)
@@ -34,14 +34,16 @@ void resetArt(void)
 {
     tiles = asset_tiles;
     player = asset_player;
+    creature = asset_blob;
 }
 
-static bool finishArt(const unsigned char *header)
+static bool finishArt(int version)
 {
-    static const unsigned char expected[] = {'R','P','G','A',2,0,0,0};
-    if (memcmp(header, expected, 4) || (header[4] != 1 && header[4] != 2) ||
-        memcmp(header + 5, expected + 5, 3)) return false;
-    if (header[4] == 1) {
+    if (version < 3) {
+        memcpy(editedArt + OLD_TILE_BYTES, asset_tiles + OLD_TILE_BYTES, TILE_BYTES - OLD_TILE_BYTES);
+        memcpy(editedArt + TILE_BYTES + PLAYER_BYTES, asset_blob, CREATURE_BYTES);
+    }
+    if (version == 1) {
         static const int moved[] = {20, 21, 60, 61, 62};
         for (size_t i = 0; i < sizeof(moved) / sizeof(*moved); i++)
             restoreBaseTile(moved[i]);
@@ -50,28 +52,41 @@ static bool finishArt(const unsigned char *header)
     if (!groundPixelsOpaque()) return false;
     tiles = editedArt;
     player = editedArt + TILE_BYTES;
+    creature = player + PLAYER_BYTES;
     return true;
+}
+
+static bool validHeader(const unsigned char *header)
+{
+    return !memcmp(header, "RPGA", 4) && header[4] >= 1 && header[4] <= 3 &&
+        !(header[5] | header[6] | header[7]);
 }
 
 bool loadArtBytes(const unsigned char *data, unsigned size)
 {
     resetArt();
-    if (size != 8 + sizeof(editedArt)) return false;
-    memcpy(editedArt, data + 8, sizeof(editedArt));
-    return finishArt(data);
+    if (size < 8 || !validHeader(data)) return false;
+    if (data[4] < 3) {
+        if (size != 8 + OLD_TILE_BYTES + PLAYER_BYTES) return false;
+        memcpy(editedArt, data + 8, OLD_TILE_BYTES);
+        memcpy(editedArt + TILE_BYTES, data + 8 + OLD_TILE_BYTES, PLAYER_BYTES);
+    } else {
+        if (size != 8 + sizeof(editedArt)) return false;
+        memcpy(editedArt, data + 8, sizeof(editedArt));
+    }
+    return finishArt(data[4]);
 }
 
 bool loadCustomArt(const char *path)
 {
-    unsigned char header[8];
     resetArt();
     FILE *file = fopen(path, "rb");
     if (!file) return false;
-    bool ok = fread(header, 1, sizeof(header), file) == sizeof(header) &&
-        fread(editedArt, 1, sizeof(editedArt), file) == sizeof(editedArt) &&
-        fgetc(file) == EOF && !ferror(file);
+    static unsigned char data[8 + sizeof(editedArt) + 1];
+    size_t length = fread(data, 1, sizeof(data), file);
+    bool ok = !ferror(file) && loadArtBytes(data, length);
     fclose(file);
-    return ok && finishArt(header);
+    return ok;
 }
 static uint16_t pack(uint32_t color)
 {
@@ -221,6 +236,11 @@ void drawTile(Screen screen, int x, int y, int tile, int scale)
 {
     blit(screen, x, y, tiles + ((tile / 8 * 16 * 128) + tile % 8 * 16) * 4,
         128, 16, 16, scale, NULL);
+}
+
+void drawCreature(Screen screen, int x, int y, int frame, int scale)
+{
+    blit(screen, x, y, creature + frame * 16 * 4, 48, 16, 16, scale, NULL);
 }
 
 void drawPlayer(Screen screen, int x, int y, int direction, int frame, int scale,

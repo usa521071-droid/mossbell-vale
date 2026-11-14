@@ -165,6 +165,7 @@ namespace MossbellVale.Editor
             saveButton = AddCommand(commands, "Save", "Ctrl+S", delegate { SaveWorld(false); });
             AddCommand(commands, "Save As", "Ctrl+Shift+S", delegate { SaveWorld(true); });
             AddCommand(commands, "Export", "Export the project to your 3DS SD card.", ExportWorld);
+            AddCommand(commands, "Playtest", "F5 · current map   Shift+F5 · game start", delegate { Playtest(false); });
             AddCommand(commands, "Publish CIA", "Build a 3DS game or publish a world update.", PublishProject);
             AddCommand(commands, "Sprites", "Ctrl+E · Edit tile and character pixels", OpenSpriteStudio);
             undoButton = AddCommand(commands, "Undo", "Ctrl+Z", delegate { Restore(undo, redo); });
@@ -432,6 +433,17 @@ namespace MossbellVale.Editor
                 brushLabel.Text = TileCatalog.Names[brush];
         }
 
+        private void Playtest(bool useProjectStart)
+        {
+            EndStroke();
+            TryFileAction("Playtest", delegate
+            {
+                var start = useProjectStart ? project.StartMap : activeMap.Id;
+                using (var game = new PlaytestWindow(project, start, art))
+                    game.ShowDialog(this);
+            });
+        }
+
         private void OpenSpriteStudio()
         {
             EndStroke();
@@ -599,7 +611,7 @@ namespace MossbellVale.Editor
                     if (tile.X >= world.Width || tile.Y >= world.Height)
                         continue;
                     var i = tile.Y * world.Width + tile.X;
-                    var id = (byte)(stamp.First + y * stamp.Width + x);
+                    var id = (byte)(stamp.First + y * stamp.Width + (stamp.Reversed ? stamp.Width - 1 - x : x));
                     if (TileCatalog.IsGround(id))
                         SetCell(tile, id, 0);
                     else
@@ -932,6 +944,8 @@ namespace MossbellVale.Editor
         {
             switch (keys)
             {
+                case Keys.F5: Playtest(false); return true;
+                case Keys.Shift | Keys.F5: Playtest(true); return true;
                 case Keys.Control | Keys.N: NewWorld(); return true;
                 case Keys.Control | Keys.E: OpenSpriteStudio(); return true;
                 case Keys.Control | Keys.O: ChooseWorld(); return true;

@@ -45,6 +45,7 @@ bool worldParse(World *world, const uint8_t *data, size_t size);
 bool worldParseProjectMap(World *world, const uint8_t *data, size_t size);
 bool worldRead(World *world, const char *path);
 bool worldWalkable(const World *world, int x, int y);
+bool worldGroundTile(int tile);
 int worldObject(const World *world, int x, int y);
 int worldGlowbells(const World *world);
 bool journeyFound(const Journey *journey, int index);

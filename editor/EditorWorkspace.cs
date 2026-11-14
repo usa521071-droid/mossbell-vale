@@ -353,7 +353,7 @@ namespace MossbellVale.Editor
                 return;
             }
             var item = ProjectData.FindEvent(world, tile.X, tile.Y);
-            if (item != null && item.Type != MapEventType.Warp && value == 1)
+            if (item != null && (item.Type == MapEventType.Sign || item.Type == MapEventType.Npc) && value == 1)
             {
                 SetStatus("Signs and NPCs block movement. Move or delete the event to clear the tile.");
                 return;

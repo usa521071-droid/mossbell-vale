@@ -30,7 +30,7 @@ $arguments = @(
     '/reference:System.Drawing.dll'
     '/reference:System.IO.Compression.dll'
 )
-foreach ($asset in 'tiles.png', 'player.png', 'world.rpgw', 'dungeon.rpgw', 'mountain.rpgw', 'project.rpgp') {
+foreach ($asset in 'tiles.png', 'player.png', 'blob.png', 'world.rpgw', 'dungeon.rpgw', 'mountain.rpgw', 'project.rpgp') {
     $assetPath = Join-Path $root "assets/$asset"
     if (-not (Test-Path -LiteralPath $assetPath -PathType Leaf)) {
         throw "Missing editor asset $assetPath"
@@ -44,7 +44,7 @@ try {
     try {
         $paths = @(
             'build/Build-3DS.ps1', 'build/Install-3DSTools.ps1', 'build/MossbellVale.rsf', 'build/New-Banner.ps1',
-            'assets/tiles.rgba', 'assets/player.rgba', 'assets/world.rpgw', 'assets/dungeon.rpgw',
+            'assets/tiles.rgba', 'assets/player.rgba', 'assets/blob.rgba', 'assets/world.rpgw', 'assets/dungeon.rpgw',
             'assets/mountain.rpgw', 'assets/banner.png', 'assets/icon.png', 'assets/ca-bundle.pem'
         )
         foreach ($directory in 'game/source', 'game/include') {

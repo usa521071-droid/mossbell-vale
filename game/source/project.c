@@ -44,7 +44,7 @@ bool mapWalkable(const Map *map, const World *world, int x, int y)
 {
     if (x < 0 || y < 0 || x >= world->width || y >= world->height) return false;
     const ProjectEvent *event = mapEvent(map, x, y);
-    if (event && event->type != PROJECT_WARP) return false;
+    if (event && (event->type == PROJECT_SIGN || event->type == PROJECT_NPC)) return false;
     int permission = map->movement[y * world->width + x];
     return permission ? permission == 1 : worldWalkable(world, x, y);
 }
@@ -56,9 +56,10 @@ static bool readEvent(Map *map, unsigned index, const uint8_t **cursor, const ui
     ProjectEvent *event = &map->events[index];
     unsigned type = bytes[0], x = bytes[1], y = bytes[2], length = bytes[3];
     unsigned target = read16(bytes + 4), targetX = bytes[6], targetY = bytes[7];
-    if (type < PROJECT_WARP || type > PROJECT_NPC || x >= map->width || y >= map->height ||
+    if (type < PROJECT_WARP || type > PROJECT_CREATURE || x >= map->width || y >= map->height ||
         length > 90 || end - bytes - 8 < (ptrdiff_t)length ||
-        (type == PROJECT_WARP ? !target : (!length || target || targetX || targetY)))
+        (type == PROJECT_WARP ? !target :
+         (target || targetX || targetY || (!length && type != PROJECT_CREATURE))))
         return false;
     for (unsigned old = 0; old < index; old++)
         if (map->events[old].x == x && map->events[old].y == y) return false;
@@ -103,16 +104,59 @@ static bool readMap(Map *map, World *world, const uint8_t **cursor, const uint8_
         mapEvent(map, world->spawnX, world->spawnY)) return false;
     for (unsigned i = 0; i < map->eventCount; i++) {
         const ProjectEvent *event = &map->events[i];
-        if (event->type == PROJECT_WARP && !mapWalkable(map, world, event->x, event->y))
+        if ((event->type == PROJECT_WARP || event->type == PROJECT_CREATURE) &&
+            !mapWalkable(map, world, event->x, event->y))
             return false;
     }
     return true;
 }
 
+int creatureAt(const Map *map, const Creature *creatures, int x, int y)
+{
+    for (unsigned i = 0; i < map->eventCount; i++) {
+        if (map->events[i].type != PROJECT_CREATURE) continue;
+        const Creature *actor = &creatures[i];
+        if ((actor->x == x && actor->y == y) ||
+            (actor->interpolation && actor->fromX == x && actor->fromY == y))
+            return (int)i;
+    }
+    return -1;
+}
+
+void creatureTick(const Map *map, const World *world, Creature *creatures,
+    int playerX, int playerY, int fromX, int fromY)
+{
+    static const int dx[] = {0, -1, 1, 0}, dy[] = {1, 0, 0, -1};
+    for (unsigned i = 0; i < map->eventCount; i++) {
+        const ProjectEvent *home = &map->events[i];
+        if (home->type != PROJECT_CREATURE) continue;
+        Creature *actor = &creatures[i];
+        if (actor->interpolation) actor->interpolation--;
+        if (++actor->turns < 28 + (home->x + home->y) % 10) continue;
+        actor->turns = 0;
+        int first = (actor->x * 3 + actor->y + home->x + home->y) % 4;
+        for (int offset = 0; offset < 4; offset++) {
+            int direction = (first + offset) % 4;
+            int x = actor->x + dx[direction], y = actor->y + dy[direction];
+            const ProjectEvent *event = mapEvent(map, x, y);
+            if (abs(x - home->x) + abs(y - home->y) > 2 ||
+                (x == playerX && y == playerY) || (x == fromX && y == fromY) ||
+                (event && event != home) || creatureAt(map, creatures, x, y) >= 0 ||
+                worldObject(world, x, y) == GLOWBELL || !mapWalkable(map, world, x, y)) continue;
+            actor->fromX = actor->x;
+            actor->fromY = actor->y;
+            actor->x = x;
+            actor->y = y;
+            actor->interpolation = 8;
+            break;
+        }
+    }
+}
+
 static bool parseProject(Project *project, World *mapWorld, const uint8_t *data, size_t size)
 {
     if (size < 12 || size > PROJECT_MAX_SIZE || memcmp(data, "RPGP", 4) ||
-        read16(data + 4) != 1 || read16(data + 10)) return false;
+        (read16(data + 4) != 1 && read16(data + 4) != 2) || read16(data + 10)) return false;
     int count = read16(data + 6);
     uint16_t start = read16(data + 8);
     if (count < 1 || count > PROJECT_MAX_MAPS) return false;
@@ -214,7 +258,7 @@ bool projectSave(const Project *project, ProjectProgress *progress, const Journe
 }
 
 int projectResume(const Project *project, ProjectProgress *progress, Journey *journey,
-    const char *path)
+    const char *path, uint32_t previousSignature)
 {
     FILE *file = fopen(path, "rb");
     if (!file) return -1;
@@ -222,8 +266,9 @@ int projectResume(const Project *project, ProjectProgress *progress, Journey *jo
     bool ok = fread(data, 1, sizeof(data), file) == sizeof(data) &&
         fgetc(file) == EOF && !ferror(file);
     fclose(file);
-    if (!ok || memcmp(data, "MP0", 3) || (data[3] != '1' && data[3] != '2') ||
-        read32(data + 4) != project->signature) return -1;
+    if (!ok || memcmp(data, "MP0", 3) || (data[3] != '1' && data[3] != '2')) return -1;
+    uint32_t signature = read32(data + 4);
+    if (signature != project->signature && (!previousSignature || signature != previousSignature)) return -1;
     int index = projectIndex(project, read16(data + 8));
     if (index < 0) return -1;
     for (int part = 0; part < OUTFIT_PARTS; part++)

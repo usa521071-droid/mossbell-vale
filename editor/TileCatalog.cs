@@ -25,13 +25,15 @@ namespace MossbellVale.Editor
         public readonly int First;
         public readonly int Width;
         public readonly int Height;
+        public readonly bool Reversed;
 
-        public TileStamp(string name, int first, int width, int height)
+        public TileStamp(string name, int first, int width, int height, bool reversed = false)
         {
             Name = name;
             First = first;
             Width = width;
             Height = height;
+            Reversed = reversed;
         }
 
         public override string ToString() { return Name; }
@@ -46,7 +48,8 @@ namespace MossbellVale.Editor
             new TileSet("Cave floors", 56, 4),
             new TileSet("Mountain floors", 60, 4),
             new TileSet("Mountain cliff tiles", 108, 12),
-            new TileSet("Mountain stairs", 120, 3)
+            new TileSet("Mountain stairs", 120, 3),
+            new TileSet("Side stairs and ladders", 128, 16)
         };
 
         public static readonly TileSet[] ObjectSets = {
@@ -64,16 +67,22 @@ namespace MossbellVale.Editor
             new TileStamp("Roof · 3 × 3", 64, 3, 3),
             new TileStamp("Facade · 3 × 2", 73, 3, 2),
             new TileStamp("Oak canopy · 3 × 2", 88, 3, 2),
-            new TileStamp("Mountain stairs · 1 × 3", 120, 1, 3)
+            new TileStamp("Mountain stairs · 1 × 3", 120, 1, 3),
+            new TileStamp("East stairs · 3 × 1", 128, 3, 1),
+            new TileStamp("West stairs · 3 × 1", 131, 3, 1, true),
+            new TileStamp("Outdoor ladder · 1 × 3", 134, 1, 3),
+            new TileStamp("Cave ladder · 1 × 3", 137, 1, 3),
+            new TileStamp("Cave east stairs · 2 × 1", 140, 2, 1),
+            new TileStamp("Cave west stairs · 2 × 1", 142, 2, 1, true)
         };
 
         public static readonly string[] Names = MakeNames();
 
-        public static bool IsGround(int id) { return (id >= 0 && id <= 15) || (id >= 32 && id <= 63) || (id >= 108 && id <= 122); }
+        public static bool IsGround(int id) { return (id >= 0 && id <= 15) || (id >= 32 && id <= 63) || (id >= 108 && id <= 122) || (id >= 128 && id <= 143); }
 
         public static bool IsObject(int id) { return (id >= 16 && id <= 31) || (id >= 64 && id <= 107) || (id >= 123 && id <= 127); }
 
-        public static bool IsMountainStructure(int id) { return id == 61 || (id >= 108 && id <= 122); }
+        public static bool IsMountainStructure(int id) { return id == 61 || (id >= 108 && id <= 122) || (id >= 128 && id <= 143); }
 
         private static string[] MakeNames()
         {
@@ -97,6 +106,10 @@ namespace MossbellVale.Editor
             AddEdges(names, "Mountain Cliff");
             names.AddRange(new[] { "Stairs Top", "Stairs Middle", "Stairs Bottom", "Grass Fringe", "Rock Chips",
                 "Cave Crystal", "Tall Boulder", "Stone Pillar" });
+            names.AddRange(new[] { "East Stairs Foot", "East Stairs Middle", "East Stairs Crest",
+                "West Stairs Foot", "West Stairs Middle", "West Stairs Crest",
+                "Ladder Top", "Ladder Middle", "Ladder Foot", "Cave Ladder Top", "Cave Ladder Middle", "Cave Ladder Foot",
+                "Cave East Stairs Foot", "Cave East Stairs Crest", "Cave West Stairs Foot", "Cave West Stairs Crest" });
             return names.ToArray();
         }
 

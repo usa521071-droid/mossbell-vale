@@ -9,7 +9,11 @@
 #define CUSTOM_PROJECT WORLD_DIR "/world.rpgp"
 #define ONLINE_PROJECT WORLD_DIR "/online.rpgp"
 
-enum { PROJECT_WARP = 1, PROJECT_SIGN, PROJECT_NPC };
+enum { PROJECT_WARP = 1, PROJECT_SIGN, PROJECT_NPC, PROJECT_CREATURE };
+
+typedef struct {
+    uint8_t x, y, fromX, fromY, interpolation, turns;
+} Creature;
 
 typedef struct {
     uint8_t type, x, y, targetX, targetY;
@@ -47,7 +51,10 @@ const ProjectEvent *mapEvent(const Map *map, int x, int y);
 bool projectSave(const Project *project, ProjectProgress *progress, const Journey *journey,
     int mapIndex, const char *path);
 int projectResume(const Project *project, ProjectProgress *progress, Journey *journey,
-    const char *path);
+    const char *path, uint32_t previousSignature);
 int projectFound(const Project *project, const ProjectProgress *progress);
+int creatureAt(const Map *map, const Creature *creatures, int x, int y);
+void creatureTick(const Map *map, const World *world, Creature *creatures,
+    int playerX, int playerY, int fromX, int fromY);
 
 #endif

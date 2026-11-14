@@ -89,6 +89,11 @@ namespace MossbellVale.Editor
                 }
             }
 
+            foreach (var item in world.Events)
+                if (item.Type == MapEventType.Creature && item.X >= firstX && item.X <= lastX &&
+                    item.Y >= firstY && item.Y <= lastY)
+                    art.DrawCreature(e.Graphics, new Rectangle(item.X * pixels, item.Y * pixels, pixels, pixels), 0);
+
             if (view == EditorView.Movement)
                 DrawMovement(e.Graphics, firstX, lastX, firstY, lastY, pixels);
             else if (view == EditorView.Events || view == EditorView.Connections)
@@ -145,7 +150,7 @@ namespace MossbellVale.Editor
                         var i = y * world.Width + x;
                         var value = world.Movement[i];
                         var source = ProjectData.FindEvent(world, x, y);
-                        bool eventBlocks = source != null && source.Type != MapEventType.Warp;
+                        bool eventBlocks = source != null && (source.Type == MapEventType.Sign || source.Type == MapEventType.Npc);
                         var brush = eventBlocks || value == 2 ? blocked : value == 1 ? allowed :
                             (WorldData.IsWalkable(world.Ground[i], world.Objects[i]) ? null : terrain);
                         if (brush == null)
@@ -171,7 +176,8 @@ namespace MossbellVale.Editor
                         continue;
                     var bounds = new Rectangle(item.X * pixels + 2, item.Y * pixels + 2, pixels - 4, pixels - 4);
                     var brush = item.Type == MapEventType.Warp ? warp : item.Type == MapEventType.Sign ? sign : npc;
-                    var label = item.Type == MapEventType.Warp ? "W" : item.Type == MapEventType.Sign ? "S" : "N";
+                    var label = item.Type == MapEventType.Warp ? "W" : item.Type == MapEventType.Sign ? "S" :
+                        item.Type == MapEventType.Creature ? "C" : "N";
                     graphics.FillEllipse(brush, bounds);
                     graphics.DrawEllipse(Pens.White, bounds);
                     graphics.DrawString(label, font, Brushes.White, bounds, centered);

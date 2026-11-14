@@ -32,13 +32,13 @@ namespace MossbellVale.Editor
 
         private sealed class SpriteEdit : IDisposable
         {
-            public readonly bool Character;
+            public readonly int Category;
             public readonly int Index;
             public readonly Bitmap Pixels;
 
-            public SpriteEdit(bool character, int index, Bitmap pixels)
+            public SpriteEdit(int category, int index, Bitmap pixels)
             {
-                Character = character;
+                Category = category;
                 Index = index;
                 Pixels = pixels;
             }
@@ -61,7 +61,8 @@ namespace MossbellVale.Editor
         private Button redoButton;
         private RadioButton pencilButton;
         private readonly Action artEdited;
-        private bool character;
+        private int spriteCategory;
+        private bool IsGround { get { return spriteCategory == 0; } }
         private int index;
         private int frame;
         private bool adjusting;
@@ -106,9 +107,9 @@ namespace MossbellVale.Editor
             Controls.Add(layout);
 
             preview.Paint += PaintPreview;
-            timer.Tick += delegate { frame = (frame + 1) % 4; if (character) preview.Invalidate(); };
+            timer.Tick += delegate { frame = (frame + 1) % 4; if (spriteCategory >= 2) preview.Invalidate(); };
             timer.Start();
-            SelectSlot(false, initialTile);
+            SelectSlot(TileCatalog.IsGround(initialTile) ? 0 : 1, initialTile);
             SetColor(canvas.BrushColor);
             UpdateHistory();
         }
@@ -133,7 +134,7 @@ namespace MossbellVale.Editor
         {
             var panel = Sidebar();
             panel.Controls.Add(Heading("Sprite"));
-            category.Items.AddRange(new object[] { "Ground tiles", "Object tiles", "Walking character" });
+            category.Items.AddRange(new object[] { "Ground tiles", "Object tiles", "Walking character", "Pink blob" });
             category.SelectedIndexChanged += delegate { if (!adjusting) FillSlots(0); };
             slot.SelectedIndexChanged += delegate { if (!adjusting) DisplaySlot(); };
             panel.Controls.Add(category);
@@ -186,10 +187,10 @@ namespace MossbellVale.Editor
             return panel;
         }
 
-        private void SelectSlot(bool isCharacter, int id)
+        private void SelectSlot(int selectedCategory, int id)
         {
             adjusting = true;
-            category.SelectedIndex = isCharacter ? 2 : TileCatalog.IsGround(id) ? 0 : 1;
+            category.SelectedIndex = selectedCategory;
             adjusting = false;
             FillSlots(id);
         }
@@ -204,6 +205,12 @@ namespace MossbellVale.Editor
                 for (var facing = 0; facing < Directions.Length; facing++)
                     for (var pose = 0; pose < Frames.Length; pose++)
                         slot.Items.Add(new SpriteSlot(Directions[facing] + " · " + Frames[pose], facing * Frames.Length + pose));
+            }
+            else if (categoryIndex == 3)
+            {
+                slot.Items.Add(new SpriteSlot("Idle", 0));
+                slot.Items.Add(new SpriteSlot("Hop", 1));
+                slot.Items.Add(new SpriteSlot("Land", 2));
             }
             else
             {
@@ -228,15 +235,15 @@ namespace MossbellVale.Editor
             if (selected == null)
                 return;
 
-            character = category.SelectedIndex == 2;
+            spriteCategory = category.SelectedIndex;
             index = selected.Index;
             var old = canvas.Pixels;
-            canvas.Pixels = art.GetSprite(character, index);
+            canvas.Pixels = ReadSprite(spriteCategory, index);
             if (old != null)
                 old.Dispose();
 
             SetColor(canvas.BrushColor);
-            canvas.EraserColor = !character && TileCatalog.IsGround(index)
+            canvas.EraserColor = IsGround
                 ? canvas.Pixels.GetPixel(0, 0) : Color.FromArgb(0, 0, 0, 0);
             preview.Invalidate();
             UpdateStatus(new Point(-1, -1));
@@ -252,10 +259,14 @@ namespace MossbellVale.Editor
             var height = canvas.Pixels.Height * 3;
             var bounds = new Rectangle((preview.Width - width) / 2, (preview.Height - height) / 2, width, height);
             GameArt.UsePixelArt(e.Graphics);
-            if (character)
+            if (spriteCategory == 2)
             {
                 using (var sprite = art.GetSprite(true, index / 3 * 3 + frameToDraw))
                     e.Graphics.DrawImage(sprite, bounds, 0, 0, sprite.Width, sprite.Height, GraphicsUnit.Pixel);
+            }
+            else if (spriteCategory == 3)
+            {
+                art.DrawCreature(e.Graphics, bounds, frameToDraw);
             }
             else
             {
@@ -269,7 +280,7 @@ namespace MossbellVale.Editor
         {
             if (color.A != 255)
             {
-                if (!character && TileCatalog.IsGround(index))
+                if (IsGround)
                     color = Color.FromArgb(255, color);
                 else if (color.A == 0)
                     color = Color.FromArgb(0, 0, 0, 0);
@@ -287,14 +298,25 @@ namespace MossbellVale.Editor
                 return;
             var size = canvas.Pixels.Width + " × " + canvas.Pixels.Height + " px";
             status.Text = slot.SelectedItem + "     ·     " + size + (position.X >= 0 ? "     ·     X " + position.X + "   Y " + position.Y : "") +
-                (!character && TileCatalog.IsGround(index) ? "     ·     Ground erases to the tile’s top-left color" : "     ·     Right-click or Delete to erase");
+                (IsGround ? "     ·     Ground erases to the tile’s top-left color" : "     ·     Right-click or Delete to erase");
+        }
+
+        private Bitmap ReadSprite(int selectedCategory, int id)
+        {
+            return selectedCategory == 3 ? art.GetCreatureFrame(id) : art.GetSprite(selectedCategory == 2, id);
+        }
+
+        private void WriteSprite(int selectedCategory, int id, Bitmap pixels)
+        {
+            if (selectedCategory == 3) art.SetCreatureFrame(id, pixels);
+            else art.SetSprite(selectedCategory == 2, id, pixels);
         }
 
         private void CommitCanvas()
         {
-            Push(undo, new SpriteEdit(character, index, art.GetSprite(character, index)));
+            Push(undo, new SpriteEdit(spriteCategory, index, ReadSprite(spriteCategory, index)));
             Clear(redo);
-            art.SetSprite(character, index, canvas.Pixels);
+            WriteSprite(spriteCategory, index, canvas.Pixels);
             FinishEdit();
         }
 
@@ -307,9 +329,9 @@ namespace MossbellVale.Editor
             from.RemoveAt(from.Count - 1);
             using (edit)
             {
-                Push(to, new SpriteEdit(edit.Character, edit.Index, art.GetSprite(edit.Character, edit.Index)));
-                art.SetSprite(edit.Character, edit.Index, edit.Pixels);
-                SelectSlot(edit.Character, edit.Index);
+                Push(to, new SpriteEdit(edit.Category, edit.Index, ReadSprite(edit.Category, edit.Index)));
+                WriteSprite(edit.Category, edit.Index, edit.Pixels);
+                SelectSlot(edit.Category, edit.Index);
             }
             FinishEdit();
         }
@@ -359,15 +381,15 @@ namespace MossbellVale.Editor
                             throw new InvalidDataException("Use a PNG matching the selected sprite’s dimensions.");
                         using (var pixels = source.Clone(new Rectangle(Point.Empty, source.Size), PixelFormat.Format32bppArgb))
                         {
-                            if (!character && TileCatalog.IsGround(index))
+                            if (IsGround)
                                 for (var y = 0; y < pixels.Height; y++)
                                     for (var x = 0; x < pixels.Width; x++)
                                         if (pixels.GetPixel(x, y).A != 255)
                                             throw new InvalidDataException("Ground tiles need an opaque PNG image.");
 
-                            Push(undo, new SpriteEdit(character, index, art.GetSprite(character, index)));
+                            Push(undo, new SpriteEdit(spriteCategory, index, ReadSprite(spriteCategory, index)));
                             Clear(redo);
-                            art.SetSprite(character, index, pixels);
+                            WriteSprite(spriteCategory, index, pixels);
                             DisplaySlot();
                             FinishEdit();
                         }

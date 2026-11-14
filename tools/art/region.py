@@ -20,7 +20,7 @@ class Event:
 
     def encode(self):
         message = self.text.encode('ascii')
-        assert 0 <= len(message) <= 90 if self.kind == 1 else 1 <= len(message) <= 90
+        assert (0 if self.kind in (1, 4) else 1) <= len(message) <= 90
         return struct.pack('<BBBBHBB', self.kind, self.x, self.y, len(message), self.target, *self.landing) + message
 
 
@@ -170,6 +170,21 @@ def make_region(official=False):
     summit.scenery.point((25, 7), fill=31)
     summit.stamp(20, 0, 4, [127, 0, 0, 127])
 
+    # Cut a ladder through the cave shelf and stairs through each flank of a summit terrace.
+    for y, ground in enumerate((137, 138, 139), 11):
+        cave.floor.point((17, y), fill=ground)
+        cave.scenery.point((17, y), fill=0)
+    cave.floor.line((17, 10, 22, 10), fill=56)
+    clear(cave, (17, 10, 22, 10))
+    cave.floor.line((22, 10, 22, 13), fill=56)
+    clear(cave, (22, 10, 22, 13))
+    for x, ground in enumerate((128, 129, 130), 13):
+        summit.floor.point((x, 17), fill=ground)
+        summit.scenery.point((x, 17), fill=0)
+    for x, ground in enumerate((133, 132, 131), 29):
+        summit.floor.point((x, 18), fill=ground)
+        summit.scenery.point((x, 18), fill=0)
+
     region = [RegionMap(1, 'Harbor Town', 'Settlements', town), RegionMap(2, 'Bracken Route', 'Routes', route),
               RegionMap(3, 'Ember Cave', 'Routes', cave), RegionMap(4, 'Slate Summit', 'Routes', summit),
               RegionMap(5, 'Trailkeeper Cottage', 'Interiors', cottage), RegionMap(6, 'Summit Shrine', 'Interiors', shrine),
@@ -202,6 +217,9 @@ def make_region(official=False):
     region[4].event(3, (6, 3), 'I am the trailkeeper. Search the route, cave, glade, and summit for four glowbells.')
     region[6].event(3, (18, 15), 'The glowbell likes the quiet grass in the east. Watch for the white flowers.')
     region[0].event(3, (18, 16), 'The trailkeeper lives in the blue house north of here. Watch for the slate trail signs.')
+    region[0].event(4, (19, 15), 'The pink blob blinks, then bounces. It smells faintly of berries.')
+    region[1].event(4, (5, 17), '')
+    region[6].event(4, (16, 9), '')
 
     # Marks on the project are equally usable when the editor shows the movement mode.
     region[0].movement[(23, 12)] = 1
@@ -226,7 +244,7 @@ def validate(region):
         if not (0 <= x < record.world.ground.width and 0 <= y < record.world.ground.height):
             return False
         event = events.get((key, x, y))
-        if event and event.kind != 1:
+        if event and event.kind in (2, 3):
             return False
         movement = record.movement.get(point, 0)
         if movement:
@@ -238,6 +256,8 @@ def validate(region):
         assert walkable(record.key, record.world.spawn), record.name
         assert (record.key, *record.world.spawn) not in events, record.name
         for event in record.events:
+            if event.kind == 4:
+                assert walkable(record.key, (event.x, event.y)), (record.name, event)
             if event.kind == 1:
                 assert walkable(record.key, (event.x, event.y)), (record.name, event)
                 assert walkable(event.target, event.landing), (record.name, event)
@@ -277,7 +297,7 @@ def validate(region):
             if item == 29:
                 assert reachable_adjacent(record.key, x, y), (record.name, x, y)
         for event in record.events:
-            if event.kind in (2, 3):
+            if event.kind in (2, 3, 4):
                 assert reachable_adjacent(record.key, event.x, event.y), (record.name, event)
     assert total == 4
 
@@ -313,11 +333,18 @@ def draw_region(region, previews, path):
     image.save(path, optimize=True)
 
 
-def make_project(assets, tiles, player):
+def make_project(assets, tiles, player, blob):
     region = make_region()
-    for maps, output in [(region, assets / 'project.rpgp'), (make_region(True), assets.parent / 'updates' / 'project-1.rpgp')]:
+    for maps, output in [(region, assets / 'project.rpgp'), (make_region(True), assets.parent / 'updates' / 'project-2.rpgp')]:
         validate(maps)
-        header = struct.pack('<4sHHHH', b'RPGP', 1, len(maps), maps[0].key, 0)
+        header = struct.pack('<4sHHHH', b'RPGP', 2, len(maps), maps[0].key, 0)
         output.write_bytes(header + b''.join(record.encode() for record in maps))
-    previews = {record.key: preview(record.world, tiles, player, show_player=False) for record in region}
+    previews = {}
+    creature = blob.crop((0, 0, 16, 16))
+    for record in region:
+        image = preview(record.world, tiles, player, show_player=False).convert('RGBA')
+        for event in record.events:
+            if event.kind == 4:
+                image.alpha_composite(creature, (event.x * 16, event.y * 16))
+        previews[record.key] = image.convert('RGB')
     draw_region(region, previews, assets / 'region-preview.png')

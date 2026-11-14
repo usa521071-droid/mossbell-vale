@@ -17,7 +17,7 @@
 #if MOSSBELL_PUBLISHED
 #define CATALOG_URL RELEASES "latest/download/catalog.txt"
 #else
-#define CATALOG_URL BASE_URL "project-catalog.txt"
+#define CATALOG_URL BASE_URL "project-catalog-v2.txt"
 #endif
 #define CIA_PATH WORLD_DIR "/MossbellVale-update.cia"
 #define CIA_TEMP CIA_PATH ".tmp"
