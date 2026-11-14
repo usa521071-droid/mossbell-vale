@@ -78,7 +78,7 @@ static bool parseCatalog(Update *update, const char *data)
         update->digest[i] = (uint8_t)strtoul(byte, NULL, 16);
     }
     update->build = build;
-    update->worldRevision = revision;
+    update->worldRevision = revision >= FIRST_TOWN_REVISION ? revision : 0;
     return true;
 }
 
@@ -86,14 +86,26 @@ static bool readOnline(World *world, unsigned *revision)
 {
     FILE *file = fopen(ONLINE_WORLD, "rb");
     if (!file) return false;
-    static uint8_t data[4 + WORLD_FILE_MAX + 1];
-    size_t length = fread(data, 1, sizeof(data), file);
+    uint8_t *data = malloc(4 + WORLD_FILE_MAX + 1);
+    World *temporary = world ? NULL : malloc(sizeof(World));
+    if (!data || (!world && !temporary)) {
+        fclose(file);
+        free(data);
+        free(temporary);
+        return false;
+    }
+    size_t length = fread(data, 1, 4 + WORLD_FILE_MAX + 1, file);
     bool ok = !ferror(file) && length >= 4;
     fclose(file);
-    if (!ok || (world && !worldParse(world, data + 4, length - 4))) return false;
-    *revision = (unsigned)data[0] | (unsigned)data[1] << 8 |
-        (unsigned)data[2] << 16 | (unsigned)data[3] << 24;
-    return *revision > 0 && *revision <= 999999;
+    if (ok) {
+        *revision = (unsigned)data[0] | (unsigned)data[1] << 8 |
+            (unsigned)data[2] << 16 | (unsigned)data[3] << 24;
+        ok = *revision >= FIRST_TOWN_REVISION && *revision <= 999999 &&
+            worldParse(world ? world : temporary, data + 4, length - 4);
+    }
+    free(data);
+    free(temporary);
+    return ok;
 }
 
 bool updateReadWorld(World *world)
@@ -158,7 +170,6 @@ static void updateGame(Update *update)
     }
     mbedtls_sha256_free(&sha);
     if (ok) {
-        remove(CIA_PATH);
         ok = rename(CIA_TEMP, CIA_PATH) == 0;
         strcpy(update->status, ok ? "CIA saved. Open your CIA installer to install it." :
             "Could not save the downloaded CIA.");

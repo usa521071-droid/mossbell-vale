@@ -1,6 +1,6 @@
 # Mossbell Vale
 
-Mossbell Vale is a short top-down exploration RPG for Nintendo 3DS with original GBA-inspired pixel art. Follow the trail, collect three glowbells, and ring the stone arch. The Windows editor lets you build a new world or start from the included demo.
+Mossbell Vale is a top-down exploration RPG for Nintendo 3DS with original 16-bit pixel art. Explore Bellwick Town, Lantern Cavern and Highstone Pass, collect the glowbells and ring each region's stone arch. The Windows editor includes the three maps, a tile painter and a pixel editor for tiles and animated characters.
 
 ## Play on Nintendo 3DS
 
@@ -8,22 +8,27 @@ Download `MossbellVale.cia` from [Releases](https://github.com/usa521071-droid/m
 
 - **D-pad or Circle Pad** moves. Hold **B** to run.
 - **A** reads signs and rings the arch when you face it. Walk onto a glowbell to collect it.
-- **Start** opens the trail menu. Save your progress there, open the wardrobe, or check for updates.
+- **X** toggles the map zoom.
+- **Start** opens the trail menu. Choose a region, save your progress, change clothes or check for updates. Each region has its own save.
 - **Select** opens the wardrobe directly. Pick a feature with Up/Down and change its color with Left/Right.
 
 ## Build a world on Windows
 
-Open `MossbellValeEditor.exe` from the same release. It opens the sample world with all assets embedded.
+Open `MossbellValeEditor.exe` from the same release. It opens the town with all assets embedded. Load the cavern or mountain preset to start with a different layout.
 
-1. Pick a ground or object tile and paint on the map. Ground includes meadow, trails, water and boardwalk. Objects include trees, mountains, rocks, cottages and quest markers.
+1. Pick a ground or object tile and paint on the 16×16-pixel tile grid. Use matching cliff edges, corners, stairs and plateau tiles to build a mountain. Roof and facade pieces join to form buildings.
 2. Use **Spawn** to set the starting position on a walkable tile. Set the character's shirt, pants, hair and skin colors in the outfit panel.
-3. Save an editable `.rpgw` file. Choose **Export to SD**, select the root of your 3DS SD card, and restart the game. It reads `/3ds/MossbellVale/world.rpgw` automatically.
+3. Open **Sprite Studio** (**Ctrl+E**) to draw tiles or character frames pixel by pixel. Each walking direction has an idle frame and two step frames. Use the designated outfit swatches to keep in-game color changes working on your custom character art. **Save PNG** exports the selected tile or frame and **Import PNG** accepts an image of the same size.
+4. Save the editable world. Keep the `.rpgw` map and its `.rpga` art sidecar together using the same filename stem.
+5. Choose **Export to SD**, select the root of your 3DS SD card, and restart the game. It reads the exported `world.rpgw` and `art.rpga` from `/3ds/MossbellVale/` automatically. You can revisit the export from **Start → Choose a region → Custom World**.
 
-Place glowbells on walkable terrain and leave room beside trail signs and stone arches for the player to interact. To return to the official world, move your custom `world.rpgw` file out of the game's SD folder.
+Place glowbells on walkable terrain and leave room beside trail signs and stone arches for the player to interact. Select Bellwick Town, Lantern Cavern or Highstone Pass from the region menu to return to the built-in maps.
+
+To shape a mountain quickly, select **Mountain plateau** from the region brush menu and drag a rectangle. Switch back to single tiles or stamps to paint stairs and join multiple plateaus.
 
 ## Update from the game
 
-Open **Start → Updates → Check for updates** with Wi-Fi connected. The first official world update adds a ruin and fourth glowbell to the eastern trail. **Download official world** applies it in the game. An SD card world exported by the editor stays active if one is present.
+Open **Start → Updates → Check for updates** with Wi-Fi connected. **Download official world** updates Bellwick Town. You can visit it from the region menu.
 
 **Download game CIA** appears available when a newer game release is listed. It verifies the release file against the catalog's SHA-256 hash and saves it to `/3ds/MossbellVale/MossbellVale-update.cia`. Install that file from your CIA installer. Updates to the map and wardrobe can be exported from the editor without rebuilding or reinstalling the game.
 
@@ -40,6 +45,8 @@ powershell -ExecutionPolicy Bypass -File .\editor\build.ps1
 The build writes the CIA, 3DSX and editor EXE to `dist`. The 3DS tool installer uses a portable directory. Pass `-ToolRoot` to both 3DS scripts to choose a specific location. To regenerate the graphics and demo world, run `py tools/art/make_assets.py` with Pillow installed.
 
 The RPGW v1 map starts with four ASCII bytes (`RPGW`), followed by five little-endian 16-bit values (format version, width, height, spawn X, spawn Y), four palette bytes (shirt, pants, hair, skin), then two row-major byte arrays for ground and objects. Dimensions are 8–128 tiles per side.
+
+The RPGA v1 art sidecar starts with the bytes `52 50 47 41 01 00 00 00`, followed by the 128×256 tile sheet and the 48×96 player sheet in scanline RGBA order. Each tile is 16×16. The player sheet uses 16×24 frames with rows for down, left, right and up.
 
 The updater reads `updates/catalog.txt`. Each catalog row is `MVB1 <build> <world-revision> <cia-sha256>`, where build is `major*10000 + minor*100 + patch`. Publish `MossbellVale.cia` on the matching `vMAJOR.MINOR.PATCH` GitHub release and put the official map at `updates/world-<revision>.rpgw` before increasing those numbers. For a fork, change the GitHub URLs in `game/source/update.c`.
 

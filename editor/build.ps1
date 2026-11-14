@@ -1,7 +1,10 @@
 [CmdletBinding()]
-param([string] $OutputDirectory = (Join-Path $PSScriptRoot '../dist'))
+param([string] $OutputDirectory)
 
 $ErrorActionPreference = 'Stop'
+if (-not $OutputDirectory) {
+    $OutputDirectory = Join-Path $PSScriptRoot '../dist'
+}
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $compiler = Join-Path ([Runtime.InteropServices.RuntimeEnvironment]::GetRuntimeDirectory()) 'csc.exe'
 if (-not (Test-Path -LiteralPath $compiler)) {
@@ -26,7 +29,7 @@ $arguments = @(
     '/reference:System.Windows.Forms.dll'
     '/reference:System.Drawing.dll'
 )
-foreach ($asset in 'tiles.png', 'player.png', 'world.rpgw') {
+foreach ($asset in 'tiles.png', 'player.png', 'world.rpgw', 'dungeon.rpgw', 'mountain.rpgw') {
     $assetPath = Join-Path $root "assets/$asset"
     if (-not (Test-Path -LiteralPath $assetPath -PathType Leaf)) {
         throw "Missing editor asset $assetPath"

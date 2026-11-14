@@ -1,0 +1,6 @@
+* text=auto
+*.png binary
+*.rgba binary
+*.rpgw binary
+*.rpga binary
+*.pem text eol=lf

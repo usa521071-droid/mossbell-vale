@@ -30,7 +30,9 @@ static unsigned read16(const uint8_t *data)
 static bool passable(int ground, int object)
 {
     return (ground < 8 || ground > 11) &&
-        (object == 0 || object == 22 || object == 23 || object == GLOWBELL);
+        (object == 0 || object == 22 || object == 23 || object == GLOWBELL ||
+         object == 86 || object == 87 || object == 95 ||
+         (object >= 120 && object <= 125));
 }
 
 static bool validOutfit(const uint8_t *outfit)
@@ -54,7 +56,10 @@ bool worldParse(World *world, const uint8_t *data, size_t size)
     const uint8_t *ground = data + WORLD_HEADER;
     const uint8_t *objects = ground + cells;
     for (size_t i = 0; i < cells; i++) {
-        if (ground[i] > 15 || (objects[i] && (objects[i] < 16 || objects[i] > 31)))
+        uint8_t base = ground[i], object = objects[i];
+        if (!(base < 16 || (base >= 32 && base < 64)) ||
+            !(object == 0 || (object >= 16 && object < 32) ||
+              (object >= 64 && object < 128)))
             return false;
     }
     int spawn = spawnY * width + spawnX;
@@ -152,9 +157,9 @@ bool worldWrite(const char *path, const uint8_t *data, size_t size)
 
 enum { SAVE_HEADER = 15, SAVE_SIZE = SAVE_HEADER + WORLD_CELLS / 8 };
 
-bool journeyLoad(const World *world, Journey *journey)
+bool journeyLoad(const World *world, Journey *journey, const char *path)
 {
-    FILE *file = fopen(SAVE_FILE, "rb");
+    FILE *file = fopen(path, "rb");
     if (!file) return false;
     uint8_t data[SAVE_SIZE];
     bool ok = fread(data, 1, sizeof(data), file) == sizeof(data) &&
@@ -172,7 +177,7 @@ bool journeyLoad(const World *world, Journey *journey)
     return true;
 }
 
-bool journeySave(const World *world, const Journey *journey)
+bool journeySave(const World *world, const Journey *journey, const char *path)
 {
     uint8_t data[SAVE_SIZE] = {'M', 'V', '0', '1'};
     for (int i = 0; i < 4; i++) data[4 + i] = world->signature >> (8 * i);
@@ -182,5 +187,5 @@ bool journeySave(const World *world, const Journey *journey)
     data[14] = journey->completed;
     memcpy(data + SAVE_HEADER, journey->found, sizeof(journey->found));
     worldMakeDirectory();
-    return worldWrite(SAVE_FILE, data, sizeof(data));
+    return worldWrite(path, data, sizeof(data));
 }

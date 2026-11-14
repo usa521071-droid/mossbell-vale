@@ -60,28 +60,37 @@ namespace MossbellVale.Editor
         public void Save(string path)
         {
             Validate();
+            using (var stream = new MemoryStream())
+            using (var writer = new BinaryWriter(stream))
+            {
+                writer.Write(Signature);
+                writer.Write(FormatVersion);
+                writer.Write((ushort)Width);
+                writer.Write((ushort)Height);
+                writer.Write((ushort)SpawnX);
+                writer.Write((ushort)SpawnY);
+                writer.Write(Outfit);
+                writer.Write(Ground);
+                writer.Write(Objects);
+                writer.Flush();
+                WriteAtomically(path, stream.ToArray());
+            }
+        }
+
+        public static void WriteAtomically(string path, byte[] bytes)
+        {
             path = Path.GetFullPath(path);
             var temporary = Path.Combine(Path.GetDirectoryName(path), Guid.NewGuid().ToString("N") + ".tmp");
             try
             {
                 using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
-                using (var writer = new BinaryWriter(stream))
                 {
-                    writer.Write(Signature);
-                    writer.Write(FormatVersion);
-                    writer.Write((ushort)Width);
-                    writer.Write((ushort)Height);
-                    writer.Write((ushort)SpawnX);
-                    writer.Write((ushort)SpawnY);
-                    writer.Write(Outfit);
-                    writer.Write(Ground);
-                    writer.Write(Objects);
-                    writer.Flush();
+                    stream.Write(bytes, 0, bytes.Length);
                     stream.Flush(true);
                 }
 
                 if (!MoveFileEx(temporary, path, ReplaceExisting | WriteThrough))
-                    throw new IOException("Windows could not replace the world file.", new Win32Exception());
+                    throw new IOException("Windows could not replace the file.", new Win32Exception());
             }
             finally
             {
@@ -116,7 +125,8 @@ namespace MossbellVale.Editor
 
         public static bool IsWalkable(byte ground, byte item)
         {
-            return (ground < 8 || ground > 11) && (item < 16 || item == 22 || item == 23 || item == 31);
+            return (ground < 8 || ground > 11) && (item == 0 || item == 22 || item == 23 || item == 31 ||
+                item == 86 || item == 87 || item == 95 || (item >= 120 && item <= 125));
         }
 
         private void Validate()
@@ -126,7 +136,7 @@ namespace MossbellVale.Editor
                     throw new InvalidDataException("The world file contains an unknown outfit color.");
 
             for (var i = 0; i < Ground.Length; i++)
-                if (Ground[i] > 15 || (Objects[i] != 0 && (Objects[i] < 16 || Objects[i] > 31)))
+                if (!TileCatalog.IsGround(Ground[i]) || (Objects[i] != 0 && !TileCatalog.IsObject(Objects[i])))
                     throw new InvalidDataException("The world file contains an unknown tile.");
 
             if (SpawnX < 0 || SpawnX >= Width || SpawnY < 0 || SpawnY >= Height ||

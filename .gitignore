@@ -3,3 +3,4 @@
 /build/work/
 /editor/bin/
 *.tmp
+__pycache__/

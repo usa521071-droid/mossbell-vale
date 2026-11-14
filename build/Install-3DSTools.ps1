@@ -33,28 +33,40 @@ function Save-VerifiedFile([string] $Url, [string] $Sha256) {
 $zipPackages = @(
     @{
         Name = 'zstd'
+        Binary = 'zstd.exe'
         Url = 'https://github.com/meta/zstd/releases/download/v1.5.7/zstd-v1.5.7-win64.zip'
         Hash = 'acb4e8111511749dc7a3ebedca9b04190e37a17afeb73f55d4425dbf0b90fad9'
     },
     @{
         Name = 'makerom'
+        Binary = 'makerom.exe'
         Url = 'https://github.com/3DSGuy/Project_CTR/releases/download/makerom-v0.19.0/makerom-v0.19.0-win_x86_64.zip'
         Hash = '88df4455e60556374e202d507f54ee03fac7493ec9554ab853157524b6d69db0'
     },
     @{
         Name = 'bannertool'
+        Binary = 'bannertool.exe'
         Url = 'https://github.com/carstene1ns/3ds-bannertool/releases/download/1.2.3/bannertool-1.2.3-windows.zip'
         Hash = 'd0f277bd875e2ad411844378155d27afe124780fcccbd81d9a594e886e2dd3c4'
     },
     @{
         Name = 'ctrtool'
+        Binary = 'ctrtool.exe'
         Url = 'https://github.com/3DSGuy/Project_CTR/releases/download/ctrtool-v1.3.0/ctrtool-v1.3.0-win_x64.zip'
         Hash = '8031dff3be72d0adb250fae1f969f27627e12a89ebc6dd074a15a75f87ddc949'
     }
 )
 foreach ($package in $zipPackages) {
+    $destination = Join-Path $sdk $package.Name
+    $receipt = Join-Path $destination '.installed-sha256'
+    if ((Test-Path -LiteralPath $receipt) -and
+        (Get-Content -LiteralPath $receipt -Raw).Trim() -eq $package.Hash -and
+        (Get-ChildItem -LiteralPath $destination -Filter $package.Binary -File -Recurse)) {
+        continue
+    }
     $archive = Save-VerifiedFile $package.Url $package.Hash
-    Expand-Archive -LiteralPath $archive -DestinationPath (Join-Path $sdk $package.Name) -Force
+    Expand-Archive -LiteralPath $archive -DestinationPath $destination -Force
+    Set-Content -LiteralPath $receipt -Value $package.Hash -Encoding Ascii
 }
 
 $packageServer = 'https://pkg.devkitpro.org/packages'
@@ -70,15 +82,20 @@ $sdkPackages = [ordered]@{
     '3ds-zlib-1.3.1-1-any.pkg.tar.zst' = 'c3be375285e6656996b939d7d9c31d34641642c0ce7d50b041568e5ac022c644'
 }
 $originalPath = $env:PATH
+$receipts = Join-Path $sdk '.package-receipts'
+New-Item -Path $receipts -ItemType Directory -Force | Out-Null
 $zstdBin = Get-ChildItem (Join-Path $sdk 'zstd') -Filter zstd.exe -File -Recurse |
     Select-Object -First 1 -ExpandProperty DirectoryName
 $env:PATH = "$zstdBin;$env:PATH"
 try {
     foreach ($package in $sdkPackages.GetEnumerator()) {
+        $receipt = Join-Path $receipts $package.Value
+        if (Test-Path -LiteralPath $receipt) { continue }
         $archive = Save-VerifiedFile "$packageServer/$($package.Key)" $package.Value
         Write-Host "Extracting $(Split-Path -Leaf $archive)"
         & tar.exe -xf $archive -C $sdk opt
         if ($LASTEXITCODE -ne 0) { throw "Could not extract $archive." }
+        New-Item -Path $receipt -ItemType File | Out-Null
     }
 } finally {
     $env:PATH = $originalPath

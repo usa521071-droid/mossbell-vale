@@ -9,15 +9,15 @@ namespace MossbellVale.Editor
     internal sealed class GameArt : IDisposable
     {
         public const int TileSize = 16;
+        public const int TileCount = 128;
         public const int PlayerWidth = 16;
         public const int PlayerHeight = 24;
-
-        public static readonly string[] TileNames = {
-            "Meadow", "Meadow Tufts", "Daisies", "Clover", "Clay Path", "Pebbled Path", "Sand", "Boardwalk",
-            "Shallows", "Water", "Deep Water", "Rapids", "Stone Trail", "Moss", "Heather", "Cobblestone",
-            "Fir", "Oak", "Shrub", "Boulder", "Mountain", "Cliff", "Fern", "Wildflowers",
-            "Hollow Log", "Fence", "Cottage Wall", "Cottage Roof", "Stump", "Stone Arch", "Trail Sign", "Glowbell"
-        };
+        private const int TilesWidth = 128;
+        private const int TilesHeight = 256;
+        private const int PlayerSheetWidth = 48;
+        private const int PlayerSheetHeight = 96;
+        private const int ArtFileSize = 8 + (TilesWidth * TilesHeight + PlayerSheetWidth * PlayerSheetHeight) * 4;
+        private static readonly byte[] Header = { (byte)'R', (byte)'P', (byte)'G', (byte)'A', 1, 0, 0, 0 };
 
         public static readonly string[][] PaletteNames = {
             new[] { "Rose", "Pine", "Gold", "Lilac", "Sky", "Berry" },
@@ -37,12 +37,84 @@ namespace MossbellVale.Editor
               { 0xC8875C, 0x935A43 }, { 0x9C634D, 0x6D423C }, { 0x775045, 0x523633 } }
         };
 
-        private readonly Bitmap tiles = ReadBitmap("tiles.png");
-        private readonly Bitmap player = ReadBitmap("player.png");
+        private readonly byte[] defaultBundle;
+        private Bitmap tiles;
+        private Bitmap player;
+        public int Revision { get; private set; }
 
-        public static WorldData ReadDemo()
+        public GameArt()
         {
-            return WorldData.Read(OpenAsset("world.rpgw"));
+            tiles = ReadBitmap("tiles.png");
+            player = ReadBitmap("player.png");
+            defaultBundle = ToBundle();
+        }
+
+        public static WorldData ReadPreset(string name)
+        {
+            return WorldData.Read(OpenAsset(name + ".rpgw"));
+        }
+
+        public byte[] ToBundle()
+        {
+            var bytes = new byte[ArtFileSize];
+            Header.CopyTo(bytes, 0);
+            var offset = Header.Length;
+            WriteBitmap(bytes, ref offset, tiles);
+            WriteBitmap(bytes, ref offset, player);
+            return bytes;
+        }
+
+        public void LoadBundle(byte[] bytes)
+        {
+            if (bytes == null)
+                bytes = defaultBundle;
+            if (bytes.Length != ArtFileSize)
+                throw new InvalidDataException("The art bundle has an incorrect size.");
+            for (var i = 0; i < Header.Length; i++)
+                if (bytes[i] != Header[i])
+                    throw new InvalidDataException("The art bundle is missing its RPGA version 1 header.");
+
+            var offset = Header.Length;
+            using (var grounds = ReadBitmap(bytes, ref offset, TilesWidth, TilesHeight))
+            using (var actor = ReadBitmap(bytes, ref offset, PlayerSheetWidth, PlayerSheetHeight))
+            {
+                ValidateOpaqueGround(grounds);
+                tiles.Dispose();
+                player.Dispose();
+                tiles = new Bitmap(grounds);
+                player = new Bitmap(actor);
+            }
+            Revision++;
+        }
+
+        public Bitmap GetSprite(bool character, int index)
+        {
+            var region = SpriteRegion(character, index);
+            var atlas = character ? player : tiles;
+            return atlas.Clone(region, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+        }
+
+        public void SetSprite(bool character, int index, Bitmap pixels)
+        {
+            var region = SpriteRegion(character, index);
+            var atlas = character ? player : tiles;
+            if (pixels.Width != region.Width || pixels.Height != region.Height)
+                throw new ArgumentException("The sprite is the wrong size.", "pixels");
+
+            for (var y = 0; y < region.Height; y++)
+                for (var x = 0; x < region.Width; x++)
+                {
+                    var color = pixels.GetPixel(x, y);
+                    if (!character && TileCatalog.IsGround(index))
+                        color = Color.FromArgb(255, color);
+                    atlas.SetPixel(region.X + x, region.Y + y, color);
+                }
+            Revision++;
+        }
+
+        public static Color GetOutfitMarker(int part, int shade)
+        {
+            return Rgb(OutfitColors[part, 0, shade]);
         }
 
         public static void UsePixelArt(Graphics graphics)
@@ -53,7 +125,8 @@ namespace MossbellVale.Editor
 
         public void DrawTile(Graphics graphics, int id, Rectangle destination)
         {
-            graphics.DrawImage(tiles, destination, id % 8 * TileSize, id / 8 * TileSize, TileSize, TileSize, GraphicsUnit.Pixel);
+            var bounds = SpriteRegion(false, id);
+            graphics.DrawImage(tiles, destination, bounds.X, bounds.Y, bounds.Width, bounds.Height, GraphicsUnit.Pixel);
         }
 
         public static void DrawPlayer(Graphics graphics, Bitmap sprite, int direction, int frame, Rectangle destination)
@@ -78,21 +151,73 @@ namespace MossbellVale.Editor
             return result;
         }
 
+        private static Rectangle SpriteRegion(bool character, int index)
+        {
+            if (character)
+                return new Rectangle(index % 3 * PlayerWidth, index / 3 * PlayerHeight, PlayerWidth, PlayerHeight);
+            return new Rectangle(index % 8 * TileSize, index / 8 * TileSize, TileSize, TileSize);
+        }
+
         private static Color Recolor(Color color, byte[] outfit)
         {
             var rgb = color.ToArgb() & 0xFFFFFF;
             for (var part = 0; part < outfit.Length; part++)
                 for (var shade = 0; shade < 2; shade++)
                     if (rgb == OutfitColors[part, 0, shade])
-                        return Color.FromArgb(unchecked((int)0xFF000000) | OutfitColors[part, outfit[part], shade]);
+                        return Rgb(OutfitColors[part, outfit[part], shade]);
             return color;
+        }
+
+        private static Color Rgb(int color)
+        {
+            return Color.FromArgb(unchecked((int)0xFF000000) | color);
+        }
+
+        private static void WriteBitmap(byte[] bytes, ref int offset, Bitmap bitmap)
+        {
+            for (var y = 0; y < bitmap.Height; y++)
+                for (var x = 0; x < bitmap.Width; x++)
+                {
+                    var color = bitmap.GetPixel(x, y);
+                    bytes[offset++] = color.R;
+                    bytes[offset++] = color.G;
+                    bytes[offset++] = color.B;
+                    bytes[offset++] = color.A;
+                }
+        }
+
+        private static Bitmap ReadBitmap(byte[] bytes, ref int offset, int width, int height)
+        {
+            var bitmap = new Bitmap(width, height);
+            for (var y = 0; y < height; y++)
+                for (var x = 0; x < width; x++)
+                {
+                    bitmap.SetPixel(x, y, Color.FromArgb(bytes[offset + 3], bytes[offset], bytes[offset + 1], bytes[offset + 2]));
+                    offset += 4;
+                }
+            return bitmap;
+        }
+
+        private static void ValidateOpaqueGround(Bitmap sheet)
+        {
+            for (var id = 0; id < TileCount; id++)
+            {
+                if (!TileCatalog.IsGround(id))
+                    continue;
+
+                var region = SpriteRegion(false, id);
+                for (var y = region.Top; y < region.Bottom; y++)
+                    for (var x = region.Left; x < region.Right; x++)
+                        if (sheet.GetPixel(x, y).A != 255)
+                            throw new InvalidDataException("Ground tile pixels in the art bundle must be opaque.");
+            }
         }
 
         private static Bitmap ReadBitmap(string name)
         {
             using (var stream = OpenAsset(name))
             using (var original = new Bitmap(stream))
-                return new Bitmap(original);
+                return original.Clone(new Rectangle(Point.Empty, original.Size), System.Drawing.Imaging.PixelFormat.Format32bppArgb);
         }
 
         private static Stream OpenAsset(string name)

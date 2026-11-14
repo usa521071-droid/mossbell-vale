@@ -3,8 +3,38 @@
 
 #include <ctype.h>
 #include <stddef.h>
+#include <stdio.h>
+#include <string.h>
 
 extern const unsigned char asset_tiles[], asset_player[];
+enum { TILE_BYTES = 128 * 256 * 4, PLAYER_BYTES = 48 * 96 * 4 };
+static unsigned char editedArt[TILE_BYTES + PLAYER_BYTES];
+static const unsigned char *tiles = asset_tiles, *player = asset_player;
+
+void resetArt(void)
+{
+    tiles = asset_tiles;
+    player = asset_player;
+}
+
+bool loadCustomArt(const char *path)
+{
+    static const unsigned char expected[] = {'R','P','G','A',1,0,0,0};
+    unsigned char header[sizeof(expected)];
+    resetArt();
+    FILE *file = fopen(path, "rb");
+    if (!file) return false;
+    bool ok = fread(header, 1, sizeof(header), file) == sizeof(header) &&
+        memcmp(header, expected, sizeof(header)) == 0 &&
+        fread(editedArt, 1, sizeof(editedArt), file) == sizeof(editedArt) &&
+        fgetc(file) == EOF && !ferror(file);
+    fclose(file);
+    if (ok) {
+        tiles = editedArt;
+        player = editedArt + TILE_BYTES;
+    }
+    return ok;
+}
 
 static uint16_t pack(uint32_t color)
 {
@@ -101,6 +131,15 @@ static uint32_t recolor(uint32_t color, const uint8_t *outfit)
     return color;
 }
 
+static uint16_t blend(uint16_t background, uint16_t foreground, unsigned alpha)
+{
+    unsigned inverse = 255 - alpha;
+    unsigned r = ((background >> 11) * inverse + (foreground >> 11) * alpha + 127) / 255;
+    unsigned g = (((background >> 5) & 63) * inverse + ((foreground >> 5) & 63) * alpha + 127) / 255;
+    unsigned b = ((background & 31) * inverse + (foreground & 31) * alpha + 127) / 255;
+    return (uint16_t)((r << 11) | (g << 5) | b);
+}
+
 static void blit(Screen screen, int x, int y, const unsigned char *sheet,
     int stride, int width, int height, int scale, const uint8_t *outfit)
 {
@@ -109,23 +148,33 @@ static void blit(Screen screen, int x, int y, const unsigned char *sheet,
         if (column >= screen.width || column + scale <= 0) continue;
         for (int dy = 0; dy < height; dy++) {
             const unsigned char *pixel = sheet + (dy * stride + dx) * 4;
-            if (pixel[3] < 128) continue;
+            int row = y + dy * scale;
+            if (!pixel[3] || row >= screen.height || row + scale <= 0) continue;
             uint32_t rgb = (uint32_t)pixel[0] << 16 | (uint32_t)pixel[1] << 8 | pixel[2];
             if (outfit) rgb = recolor(rgb, outfit);
-            fill(screen, column, y + dy * scale, scale, scale, rgb);
+            uint16_t color = pack(rgb);
+            int firstY = row < 0 ? 0 : row;
+            int endY = row + scale < screen.height ? row + scale : screen.height;
+            int firstX = column < 0 ? 0 : column;
+            int endX = column + scale < screen.width ? column + scale : screen.width;
+            for (int sx = firstX; sx < endX; sx++) {
+                uint16_t *out = screen.pixels + sx * screen.height + screen.height - endY;
+                for (int sy = firstY; sy < endY; sy++, out++)
+                    *out = pixel[3] == 255 ? color : blend(*out, color, pixel[3]);
+            }
         }
     }
 }
 
 void drawTile(Screen screen, int x, int y, int tile, int scale)
 {
-    blit(screen, x, y, asset_tiles + ((tile / 8 * 16 * 128) + tile % 8 * 16) * 4,
+    blit(screen, x, y, tiles + ((tile / 8 * 16 * 128) + tile % 8 * 16) * 4,
         128, 16, 16, scale, NULL);
 }
 
 void drawPlayer(Screen screen, int x, int y, int direction, int frame, int scale,
     const uint8_t *outfit)
 {
-    blit(screen, x, y, asset_player + (direction * 24 * 48 + frame * 16) * 4,
+    blit(screen, x, y, player + (direction * 24 * 48 + frame * 16) * 4,
         48, 16, 24, scale, outfit);
 }

@@ -1,14 +1,15 @@
 """Regenerate the Mossbell Vale pixel art and starter world with Pillow."""
 
-from collections import deque
 from pathlib import Path
 import random
-import struct
 
 from PIL import Image, ImageDraw
+from presets import make_presets
+from tileset import make_atlas
 
 
 ASSETS = Path(__file__).resolve().parents[2] / 'assets'
+STUDIO = Path(__file__).resolve().parent / 'studio'
 TRANSPARENT = (0, 0, 0, 0)
 
 
@@ -372,166 +373,6 @@ def make_player():
     return player
 
 
-def make_world():
-    width, height = 64, 48
-    spawn = (12, 27)
-    randomizer = random.Random(8047)
-    ground = Image.new('L', (width, height))
-    terrain = ImageDraw.Draw(ground)
-    terrain.polygon([(0, 0), (29, 0), (24, 7), (24, 16), (16, 22), (0, 17)], fill=13)
-    terrain.polygon([(42, 0), (63, 0), (63, 17), (54, 19), (45, 17), (40, 12)], fill=14)
-    terrain.polygon([(48, 22), (63, 19), (63, 47), (47, 47), (41, 37)], fill=13)
-    terrain.polygon([(0, 33), (11, 39), (15, 43), (34, 43), (38, 47), (0, 47)], fill=14)
-
-    for y in range(height):
-        for x in range(width):
-            if ground.getpixel((x, y)) == 0:
-                ground.putpixel((x, y), randomizer.choices([0, 1, 2, 3], weights=[50, 27, 9, 14])[0])
-
-    terrain.polygon([(20, 22), (25, 20), (29, 20), (34, 23), (36, 27), (34, 32), (31, 34), (24, 34), (20, 32), (18, 28)], fill=6)
-    terrain.polygon([(21, 23), (25, 21), (29, 21), (33, 24), (35, 27), (33, 31), (31, 33), (24, 33), (21, 31), (19, 28)], fill=8)
-    terrain.polygon([(23, 24), (26, 23), (30, 23), (32, 25), (33, 28), (30, 31), (25, 31), (22, 30), (21, 28)], fill=9)
-    terrain.polygon([(25, 25), (28, 24), (30, 26), (30, 29), (25, 29), (24, 28)], fill=10)
-    river = [(40, -3), (39, 3), (36, 7), (36, 13), (39, 19), (41, 23), (39, 29), (39, 34), (42, 40), (45, 48)]
-    for size, tile_id in [(7, 6), (5, 8), (3, 9)]:
-        terrain.line(river, fill=tile_id, width=size, joint='curve')
-    for x, y in [(37, 10), (36, 12), (36, 13), (38, 17), (39, 20), (41, 23), (39, 31), (40, 36), (42, 41)]:
-        terrain.point((x, y), fill=11)
-
-    west_trail = [(8, 28), (14, 28), (15, 25), (15, 21), (16, 18), (14, 15), (12, 14), (12, 12)]
-    lake_trail = [(14, 28), (15, 32), (18, 35), (24, 36), (29, 36), (33, 36), (36, 33), (36, 29), (35, 27), (36, 26)]
-    east_trail = [(43, 26), (46, 26), (47, 28), (50, 29), (52, 29), (55, 33), (58, 34)]
-    ridge_trail = [(45, 26), (46, 22), (47, 19), (49, 17), (48, 14), (46, 12), (46, 9)]
-    outer_trail = [(15, 21), (18, 18), (22, 16), (26, 16), (29, 15), (31, 13), (32, 10)]
-    trails = [west_trail, lake_trail, east_trail, ridge_trail, outer_trail]
-    for route in trails:
-        terrain.line(route, fill=12 if route == ridge_trail else 4, width=2, joint='curve')
-
-    terrain.rectangle((35, 25, 44, 26), fill=7)
-    terrain.rectangle((8, 26, 13, 30), fill=15)
-    terrain.rectangle((45, 7, 47, 11), fill=15)
-    for y in range(height):
-        for x in range(width):
-            if ground.getpixel((x, y)) == 4 and randomizer.random() < .24:
-                ground.putpixel((x, y), 5)
-
-    objects = Image.new('L', (width, height))
-    scenery = ImageDraw.Draw(objects)
-    scenery.polygon([(0, 0), (24, 0), (24, 4), (18, 8), (12, 6), (7, 9), (0, 12)], fill=16)
-    scenery.polygon([(43, 0), (63, 0), (63, 11), (58, 12), (52, 8), (50, 6), (43, 5)], fill=20)
-    scenery.polygon([(58, 15), (63, 12), (63, 47), (49, 47), (52, 42), (59, 40), (60, 35), (62, 26)], fill=16)
-    scenery.polygon([(0, 38), (5, 42), (12, 44), (22, 46), (33, 44), (43, 46), (44, 47), (0, 47)], fill=16)
-    scenery.rectangle((0, 7, 0, 38), fill=17)
-    scenery.rectangle((1, 0, 62, 0), fill=16)
-    scenery.rectangle((62, 0, 63, 47), fill=16)
-
-    for y in range(1, height - 1):
-        for x in range(1, width - 1):
-            tile_id = ground.getpixel((x, y))
-            existing = objects.getpixel((x, y))
-            if existing == 16:
-                objects.putpixel((x, y), randomizer.choices([16, 17, 18], weights=[66, 29, 5])[0])
-            elif existing == 20 and randomizer.random() < .21:
-                objects.putpixel((x, y), 21)
-            elif not existing and tile_id in (0, 1, 2, 3, 13, 14):
-                woodland = tile_id == 13 and (x > 50 or x < 10 or y < 9)
-                if randomizer.random() < (.26 if woodland else .08):
-                    choices = [16, 17, 18, 19, 22, 23, 24, 28]
-                    weights = [29, 26, 13, 3, 19, 3, 4, 3] if woodland else [9, 12, 13, 12, 25, 22, 3, 4]
-                    objects.putpixel((x, y), randomizer.choices(choices, weights=weights)[0])
-
-    scenery.rectangle((6, 22, 15, 31), fill=0)
-    scenery.rectangle((7, 22, 9, 23), fill=27)
-    scenery.rectangle((7, 24, 9, 24), fill=26)
-    scenery.rectangle((12, 21, 13, 22), fill=27)
-    scenery.rectangle((12, 23, 13, 23), fill=26)
-    scenery.line([(6, 25), (8, 25)], fill=25, width=1)
-    scenery.line([(7, 31), (11, 31)], fill=25, width=1)
-    for x, y, tile_id in [(6, 26, 23), (10, 24, 18), (7, 29, 23), (11, 25, 23), (13, 29, 23), (14, 28, 18), (15, 30, 22)]:
-        scenery.point((x, y), fill=tile_id)
-
-    specials = {
-        (13, 26): 30,
-        (12, 12): 31,
-        (29, 36): 31,
-        (53, 30): 31,
-        (46, 8): 29,
-    }
-    for x, y in [spawn, (12, 26), (13, 27), (14, 28), (46, 9)]:
-        scenery.point((x, y), fill=0)
-    for (x, y), tile_id in specials.items():
-        scenery.point((x, y), fill=tile_id)
-
-    reachable = reachable_cells(ground, objects, spawn)
-    assert all(position in reachable for position, item in specials.items() if item == 31)
-    assert (46, 9) in reachable
-    assert (13, 27) in reachable
-
-    write_world(ASSETS / 'world.rpgw', ground, objects, spawn)
-    return ground, objects, spawn
-
-
-def write_world(path, ground, objects, spawn):
-    header = struct.pack('<4s5H4B', b'RPGW', 1, ground.width, ground.height, *spawn, 0, 0, 0, 0)
-    path.write_bytes(header + ground.tobytes() + objects.tobytes())
-
-
-def make_official_world(ground, objects, spawn):
-    ground, objects = ground.copy(), objects.copy()
-    terrain, scenery = ImageDraw.Draw(ground), ImageDraw.Draw(objects)
-    terrain.line([(50, 29), (49, 33), (51, 35), (51, 37)], fill=12, width=2, joint='curve')
-    terrain.polygon([(49, 36), (53, 36), (55, 38), (55, 41), (53, 43), (49, 43), (47, 41), (47, 38)], fill=15)
-    scenery.rectangle((48, 34, 54, 43), fill=0)
-    scenery.rectangle((49, 37, 53, 37), fill=21)
-    scenery.rectangle((48, 38, 48, 41), fill=19)
-    scenery.rectangle((54, 38, 54, 41), fill=19)
-    for point in [(49, 42), (53, 42), (50, 38), (52, 38)]:
-        scenery.point(point, fill=23)
-    scenery.point((51, 40), fill=31)
-    # Leave a gap in the ruined wall at the end of the trail.
-    scenery.point((51, 37), fill=0)
-
-    reachable = reachable_cells(ground, objects, spawn)
-    objectives = {(x, y) for y in range(objects.height) for x in range(objects.width)
-                  if objects.getpixel((x, y)) == 31}
-    assert len(objectives) == 4 and objectives <= reachable
-    assert {(13, 27), (46, 9)} <= reachable
-
-    updates = ASSETS.parent / 'updates'
-    updates.mkdir(exist_ok=True)
-    write_world(updates / 'world-1.rpgw', ground, objects, spawn)
-
-
-def reachable_cells(ground, objects, spawn):
-    reachable = {spawn}
-    queue = deque([spawn])
-    while queue:
-        x, y = queue.popleft()
-        for x2, y2 in [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]:
-            position = (x2, y2)
-            if position in reachable or not (0 <= x2 < ground.width and 0 <= y2 < ground.height):
-                continue
-            if ground.getpixel(position) in range(8, 12) or objects.getpixel(position) in (*range(16, 22), *range(24, 31)):
-                continue
-            reachable.add(position)
-            queue.append(position)
-    return reachable
-
-
-def make_preview(tiles, player, ground, objects, spawn):
-    preview = Image.new('RGBA', (ground.width * 16, ground.height * 16))
-    for y in range(ground.height):
-        for x in range(ground.width):
-            position = (x * 16, y * 16)
-            preview.paste(tiles[ground.getpixel((x, y))], position)
-            object_id = objects.getpixel((x, y))
-            if object_id:
-                preview.alpha_composite(tiles[object_id], position)
-    preview.alpha_composite(player.crop((0, 0, 16, 24)), (spawn[0] * 16, spawn[1] * 16 - 8))
-    preview.convert('RGB').save(ASSETS / 'world-preview.png', optimize=True)
-    return preview
-
-
 def make_icon(tiles):
     icon = Image.new('RGBA', (48, 48), '#385449')
     draw = ImageDraw.Draw(icon)
@@ -568,7 +409,7 @@ def title_word(draw, word, origin, size, fill):
 
 
 def make_banner(preview, tiles):
-    banner = preview.crop((96, 352, 608, 608)).resize((256, 128), Image.Resampling.NEAREST)
+    banner = preview.crop((100, 96, 612, 352)).resize((256, 128), Image.Resampling.NEAREST)
     overlay = Image.new('RGBA', banner.size)
     draw = ImageDraw.Draw(overlay)
     for x in range(256):
@@ -595,16 +436,36 @@ def make_banner(preview, tiles):
 
 def main():
     ASSETS.mkdir(exist_ok=True)
-    atlas, tiles = make_tiles()
-    player = make_player()
+    _, legacy = make_tiles()
+    atlas, tiles = make_atlas(legacy)
+    player = studio_override('player', (48, 96)) or make_player()
+    for index in range(12):
+        frame = studio_override(f'player-{index}', (16, 24))
+        if frame is not None:
+            player.paste(frame, (index % 3 * 16, index // 3 * 24))
+    for index in range(len(tiles)):
+        art = studio_override(str(index), (16, 16))
+        if art is not None:
+            if (index < 16 or 32 <= index <= 63) and art.getchannel('A').getextrema() != (255, 255):
+                raise ValueError(f'Ground tile {index} must be opaque')
+            tiles[index] = art
+            atlas.paste(art, (index % 8 * 16, index // 8 * 16))
     for name, image in [('tiles', atlas), ('player', player)]:
         image.save(ASSETS / f'{name}.png', optimize=True)
         (ASSETS / f'{name}.rgba').write_bytes(image.tobytes())
-    ground, objects, spawn = make_world()
-    make_official_world(ground, objects, spawn)
-    preview = make_preview(tiles, player, ground, objects, spawn)
+    preview = make_presets(ASSETS, tiles, player)
     make_icon(tiles)
     make_banner(preview, tiles)
+
+
+def studio_override(name, expected_size):
+    path = STUDIO / f'{name}.png'
+    if not path.is_file():
+        return None
+    with Image.open(path) as image:
+        if image.size != expected_size:
+            raise ValueError(f'{path.name} must measure {expected_size[0]} × {expected_size[1]} pixels')
+        return image.convert('RGBA')
 
 
 if __name__ == '__main__':

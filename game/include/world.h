@@ -11,8 +11,8 @@
 #define WORLD_FILE_MAX (WORLD_HEADER + WORLD_CELLS * 2)
 #define WORLD_DIR "sdmc:/3ds/MossbellVale"
 #define CUSTOM_WORLD WORLD_DIR "/world.rpgw"
+#define CUSTOM_ART WORLD_DIR "/art.rpga"
 #define ONLINE_WORLD WORLD_DIR "/online.rpgw"
-#define SAVE_FILE WORLD_DIR "/journey.sav"
 
 enum { SHIRT, PANTS, HAIR, SKIN, OUTFIT_PARTS };
 enum { ARCH = 29, SIGN, GLOWBELL };
@@ -44,8 +44,8 @@ bool journeyFound(const Journey *journey, int index);
 void journeyCollect(Journey *journey, int index);
 int journeyCount(const World *world, const Journey *journey);
 void journeyNew(const World *world, Journey *journey);
-bool journeyLoad(const World *world, Journey *journey);
-bool journeySave(const World *world, const Journey *journey);
+bool journeyLoad(const World *world, Journey *journey, const char *path);
+bool journeySave(const World *world, const Journey *journey, const char *path);
 bool worldWrite(const char *path, const uint8_t *data, size_t size);
 void worldMakeDirectory(void);
 

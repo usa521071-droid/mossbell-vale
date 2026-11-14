@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string] $Version = '1.0.0',
+    [string] $Version = '1.1.0',
     [string] $ToolRoot,
     [string] $OutputDirectory
 )
@@ -10,8 +10,6 @@ $repo = Split-Path -Parent $PSScriptRoot
 if (-not $ToolRoot) {
     $ToolRoot = if ($env:MOSSBELL_3DS_TOOLS) {
         $env:MOSSBELL_3DS_TOOLS
-    } elseif (Test-Path -LiteralPath 'D:\MossbellValeTools\sdk\opt\devkitpro') {
-        'D:\MossbellValeTools'
     } else {
         Join-Path $env:LOCALAPPDATA 'MossbellValeTools'
     }
@@ -75,13 +73,19 @@ try {
         tiles = 'assets/tiles.rgba'
         player = 'assets/player.rgba'
         world = 'assets/world.rpgw'
+        dungeon = 'assets/dungeon.rpgw'
+        mountain = 'assets/mountain.rpgw'
         ca_bundle = 'assets/ca-bundle.pem'
+    }
+    $tiles = Get-Item -LiteralPath (Join-Path $repo $assetPaths.tiles)
+    if ($tiles.Length -ne 128 * 256 * 4) {
+        throw 'assets/tiles.rgba must contain a 128 x 256 atlas in 32-bit RGBA format.'
     }
     $assembly = foreach ($entry in $assetPaths.GetEnumerator()) {
         $source = Join-Path $repo $entry.Value
         Copy-Item -LiteralPath $source -Destination (Join-Path $scratch $entry.Key)
         $symbol = 'asset_' + $entry.Key
-        '.section .rodata'
+        ".section .rodata.$symbol,`"a`",%progbits"
         '.balign 4'
         ".global $symbol"
         ".type $symbol, %object"

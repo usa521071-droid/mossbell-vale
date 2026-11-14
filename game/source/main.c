@@ -8,13 +8,21 @@
 
 extern const unsigned char asset_world[];
 extern const unsigned int asset_world_size;
+extern const unsigned char asset_dungeon[], asset_mountain[];
+extern const unsigned int asset_dungeon_size, asset_mountain_size;
 
-enum { EXPLORE, MENU, WARDROBE, UPDATES };
+enum { EXPLORE, MENU, WARDROBE, UPDATES, REGIONS };
+enum { CITY, DUNGEON, MOUNTAIN, CUSTOM };
 enum { TILE = 32, TOP_WIDTH = 400, BOTTOM_WIDTH = 320, HEIGHT = 240 };
 static const uint32_t ink = 0x142923, panel = 0x234036, dark = 0x1a322b;
 static const uint32_t border = 0x426353, paper = 0xeceacb, muted = 0xafc9a5, gold = 0xf4c76a;
 static const int dx[] = {0, -1, 1, 0}, dy[] = {1, 0, 0, -1};
 static const unsigned keys[] = {KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_UP};
+static const char *const regionNames[] = {"BELLWICK TOWN", "LANTERN CAVERN", "HIGHSTONE PASS", "CUSTOM WORLD"};
+static const char *const saves[] = {
+    WORLD_DIR "/town.sav", WORLD_DIR "/cave.sav",
+    WORLD_DIR "/mountain.sav", WORLD_DIR "/custom.sav",
+};
 
 static World world;
 static Journey journey;
@@ -22,8 +30,11 @@ static Update update, work;
 static UpdateAction pendingAction;
 static Thread worker;
 static int mode, selected, direction, elapsed, animation, xPixel, yPixel;
-static int total, found, toastTime, worldSource, lastDirection = -1;
+static int total, found, toastTime, region, lastDirection = -1;
 static unsigned installedWorldRevision;
+static const char *savePath;
+static bool hasCustomWorld;
+static int viewScale = 2;
 static char toast[100];
 
 static int clamp(int value, int low, int high)
@@ -40,21 +51,32 @@ static void say(const char *message)
     toastTime = 260;
 }
 
-static void loadWorld(void)
+static bool loadWorld(int next)
 {
-    worldSource = 0;
     installedWorldRevision = updateWorldRevision();
-    if (worldRead(&world, CUSTOM_WORLD)) worldSource = 2;
-    else if (updateReadWorld(&world)) worldSource = 1;
-    else worldParse(&world, asset_world, asset_world_size);
+    bool updated = next == CITY && updateReadWorld(&world);
+    bool ok = updated;
+    if (next == CUSTOM) ok = worldRead(&world, CUSTOM_WORLD);
+    if (next == CITY && !updated) ok = worldParse(&world, asset_world, asset_world_size);
+    if (next == DUNGEON) ok = worldParse(&world, asset_dungeon, asset_dungeon_size);
+    if (next == MOUNTAIN) ok = worldParse(&world, asset_mountain, asset_mountain_size);
+    if (!ok) return false;
+    if (next == CUSTOM) hasCustomWorld = true;
+    region = next;
+    savePath = updated ? WORLD_DIR "/town-online.sav" : saves[region];
+    resetArt();
+    if (region == CUSTOM) loadCustomArt(CUSTOM_ART);
     journeyNew(&world, &journey);
-    journeyLoad(&world, &journey);
+    journeyLoad(&world, &journey, savePath);
     xPixel = journey.x * TILE;
     yPixel = journey.y * TILE;
     direction = 0;
     elapsed = 0;
+    animation = 0;
+    lastDirection = -1;
     total = worldGlowbells(&world);
     found = journeyCount(&world, &journey);
+    return true;
 }
 
 static void interact(void)
@@ -66,7 +88,7 @@ static void interact(void)
         say("The arch is quiet. Gather the remaining glowbells.");
     else if (object == ARCH && !journey.completed) {
         journey.completed = true;
-        if (journeySave(&world, &journey))
+        if (journeySave(&world, &journey, savePath))
             say("The arch sings. You restored the light of Mossbell Vale!");
         else
             say("The arch sings! Progress could not be saved to the SD card.");
@@ -80,7 +102,7 @@ static void collect(void)
     if (world.object[index] != GLOWBELL || journeyFound(&journey, index)) return;
     journeyCollect(&journey, index);
     found++;
-    if (!journeySave(&world, &journey))
+    if (!journeySave(&world, &journey, savePath))
         say("Glowbell found. Progress could not be saved to the SD card.");
     else if (found == total)
         say("All glowbells found. Face the stone arch and press A.");
@@ -119,35 +141,44 @@ static void move(unsigned held, unsigned pressed)
     elapsed = TILE;
 }
 
+static void drawWorldPlayer(Screen screen, int cameraX, int cameraY)
+{
+    drawPlayer(screen, xPixel * viewScale / 2 - cameraX,
+        yPixel * viewScale / 2 - cameraY - 8 * viewScale,
+        direction, animation, viewScale, journey.outfit);
+}
+
 static void drawWorld(Screen screen)
 {
     fill(screen, 0, 0, screen.width, screen.height, dark);
-    int cameraX = clamp(xPixel + TILE / 2 - TOP_WIDTH / 2, 0, world.width * TILE - TOP_WIDTH);
-    int cameraY = clamp(yPixel + TILE / 2 - HEIGHT / 2, 0, world.height * TILE - HEIGHT);
-    int left = clamp(cameraX / TILE, 0, world.width - 1);
-    int top = clamp(cameraY / TILE, 0, world.height - 1);
-    int right = clamp((cameraX + TOP_WIDTH) / TILE, 0, world.width - 1);
-    int bottom = clamp((cameraY + HEIGHT) / TILE, 0, world.height - 1);
+    int tile = 16 * viewScale;
+    int cameraX = clamp(xPixel * viewScale / 2 + tile / 2 - TOP_WIDTH / 2, 0,
+        world.width * tile - TOP_WIDTH);
+    int cameraY = clamp(yPixel * viewScale / 2 + tile / 2 - HEIGHT / 2, 0,
+        world.height * tile - HEIGHT);
+    int left = clamp(cameraX / tile, 0, world.width - 1);
+    int top = clamp(cameraY / tile, 0, world.height - 1);
+    int right = clamp((cameraX + TOP_WIDTH) / tile, 0, world.width - 1);
+    int bottom = clamp((cameraY + HEIGHT) / tile, 0, world.height - 1);
     for (int y = top; y <= bottom; y++)
         for (int x = left; x <= right; x++)
-            drawTile(screen, x * TILE - cameraX, y * TILE - cameraY, world.ground[y * world.width + x], 2);
+            drawTile(screen, x * tile - cameraX, y * tile - cameraY,
+                world.ground[y * world.width + x], viewScale);
     bool playerDrawn = false;
     for (int y = top; y <= bottom; y++) {
         if (!playerDrawn && y * TILE > yPixel) {
-            drawPlayer(screen, xPixel - cameraX, yPixel - cameraY - 16, direction,
-                animation, 2, journey.outfit);
+            drawWorldPlayer(screen, cameraX, cameraY);
             playerDrawn = true;
         }
         for (int x = left; x <= right; x++) {
             int index = y * world.width + x;
             int object = world.object[index];
             if (object && !(object == GLOWBELL && journeyFound(&journey, index)))
-                drawTile(screen, x * TILE - cameraX, y * TILE - cameraY, object, 2);
+                drawTile(screen, x * tile - cameraX, y * tile - cameraY, object, viewScale);
         }
     }
-    if (!playerDrawn) drawPlayer(screen, xPixel - cameraX, yPixel - cameraY - 16,
-        direction, animation, 2, journey.outfit);
-    if (toastTime) {
+    if (!playerDrawn) drawWorldPlayer(screen, cameraX, cameraY);
+    if (toastTime && mode == EXPLORE) {
         fill(screen, 12, 186, 376, 44, ink);
         fill(screen, 12, 186, 376, 2, gold);
         wrapped(screen, 24, 199, 352, toast, paper);
@@ -189,9 +220,17 @@ static void drawMinimap(Screen screen)
         for (int px = 0; px < size; px++) {
             int x = px * world.width / size, index = y * world.width + x;
             int object = world.object[index];
-            uint32_t color = colors[world.ground[index]];
+            int ground = world.ground[index];
+            static const uint32_t terrain[] = {0xb99c8e,0xa88c7d,0xc4a492,0x9f8376,
+                0xa9a493,0x9b9885,0x8da684,0x8d919b};
+            uint32_t color = ground < 16 ? colors[ground] :
+                ground < 44 ? colors[4] : ground < 56 ? colors[8] : terrain[ground - 56];
             if (object >= 16 && object <= 18) color = 0x3d6447;
             if (object == 20 || object == 21) color = 0x666453;
+            if (object >= 64 && object <= 72) color = 0x6983a3;
+            if (object >= 88 && object <= 94) color = 0x3d6447;
+            if (object >= 96 && object <= 107) color = 0x875d51;
+            if (object >= 108 && object <= 119) color = 0x626577;
             fill(screen, 24 + px, 92 + py, 1, 1, color);
         }
     }
@@ -205,7 +244,7 @@ static void drawBottom(Screen screen)
 {
     char text[64];
     if (mode == EXPLORE) {
-        heading(screen, "MOSSBELL VALE", worldSource == 2 ? "CUSTOM WORLD" : "TRAILKEEPER JOURNAL");
+        heading(screen, "MOSSBELL VALE", regionNames[region]);
         block(screen, 14, 72, 112, 125);
         label(screen, 24, 80, "FIELD MAP", muted, 1);
         drawMinimap(screen);
@@ -218,15 +257,20 @@ static void drawBottom(Screen screen)
             found == total ? "Ring the stone arch." : "Find the glowbells scattered across the vale.";
         wrapped(screen, 144, 135, 147, goal, paper);
         fill(screen, 14, 207, 292, 24, panel);
-        label(screen, 24, 216, "A INTERACT   B RUN   START MENU", muted, 1);
+        label(screen, 24, 216, "A TALK   B RUN   X ZOOM   START MENU", muted, 1);
     } else if (mode == MENU) {
         heading(screen, "TRAIL MENU", "UP / DOWN  SELECT     A  OPEN");
-        row(screen, 0, 70, "Resume journey", true);
-        row(screen, 1, 100, "Wardrobe", true);
+        row(screen, 0, 70, "Wardrobe", true);
+        row(screen, 1, 100, "Choose a region", true);
         row(screen, 2, 130, "Updates", true);
         row(screen, 3, 160, "Save journey", true);
         row(screen, 4, 190, "Return to Homebrew / HOME", true);
         label(screen, 24, 224, "B RETURN TO THE VALE", muted, 1);
+    } else if (mode == REGIONS) {
+        heading(screen, "REGIONS", "UP / DOWN  SELECT     A  TRAVEL");
+        for (int i = 0; i < 4; i++)
+            row(screen, i, 72 + i * 30, regionNames[i], i != CUSTOM || hasCustomWorld);
+        label(screen, 24, 224, "B BACK", muted, 1);
     } else if (mode == WARDROBE) {
         heading(screen, "WARDROBE", "LEFT / RIGHT  CHANGE     B  DONE");
         for (int i = 0; i < OUTFIT_PARTS; i++) {
@@ -258,14 +302,18 @@ static void runUpdate(void *unused)
 
 static void pollUpdate(void)
 {
-    if (!worker || R_FAILED(threadJoin(worker, 0))) return;
+    if (!worker || threadJoin(worker, 0) != 0) return;
     threadFree(worker);
     worker = NULL;
     update = work;
     if (pendingAction == UPDATE_WORLD && updateWorldRevision() == update.worldRevision) {
         installedWorldRevision = update.worldRevision;
-        if (worldSource != 2) loadWorld();
-        else strcpy(update.status, "Official world saved. Your custom SD world is active.");
+        if (region == CITY) {
+            journeySave(&world, &journey, savePath);
+            loadWorld(CITY);
+        } else {
+            strcpy(update.status, "Town update saved. Choose Bellwick Town to visit.");
+        }
     }
 }
 
@@ -305,6 +353,7 @@ static bool input(unsigned pressed, unsigned held)
     touchPosition touch = {0};
     if (pressed & KEY_TOUCH) hidTouchRead(&touch);
     if (mode == EXPLORE) {
+        if (pressed & KEY_X) viewScale = 3 - viewScale;
         if (elapsed) {
             move(held, 0);
         } else if (pressed & KEY_START || ((pressed & KEY_TOUCH) && touch.py >= 207)) {
@@ -319,7 +368,7 @@ static bool input(unsigned pressed, unsigned held)
     if (mode == WARDROBE) {
         if (pressed & (KEY_B | KEY_START | KEY_SELECT)) {
             selectMode(MENU);
-            if (!journeySave(&world, &journey)) say("Could not save the outfit to the SD card.");
+            if (!journeySave(&world, &journey, savePath)) say("Could not save the outfit to the SD card.");
             return true;
         }
         if (pressed & KEY_UP) selected = (selected + 3) % 4;
@@ -333,7 +382,7 @@ static bool input(unsigned pressed, unsigned held)
         selectMode(mode == MENU ? EXPLORE : MENU);
         return true;
     }
-    int count = mode == MENU ? 5 : 3;
+    int count = mode == MENU ? 5 : mode == REGIONS ? 4 : 3;
     if (pressed & KEY_UP) selected = (selected + count - 1) % count;
     if (pressed & KEY_DOWN) selected = (selected + 1) % count;
     bool activate = pressed & KEY_A;
@@ -349,12 +398,19 @@ static bool input(unsigned pressed, unsigned held)
         startUpdate();
         return true;
     }
+    if (mode == REGIONS) {
+        journeySave(&world, &journey, savePath);
+        if (!loadWorld(selected)) say("Export a world from the Windows editor to open it here.");
+        else say(regionNames[region]);
+        selectMode(EXPLORE);
+        return true;
+    }
     switch (selected) {
-    case 0: selectMode(EXPLORE); break;
-    case 1: selectMode(WARDROBE); break;
+    case 0: selectMode(WARDROBE); break;
+    case 1: selectMode(REGIONS); break;
     case 2: selectMode(UPDATES); break;
     case 3:
-        say(journeySave(&world, &journey) ? "Journey saved." : "Could not save to the SD card.");
+        say(journeySave(&world, &journey, savePath) ? "Journey saved." : "Could not save to the SD card.");
         selectMode(EXPLORE);
         break;
     case 4: return false;
@@ -365,9 +421,11 @@ static bool input(unsigned pressed, unsigned held)
 int main(void)
 {
     gfxInit(GSP_RGB565_OES, GSP_RGB565_OES, false);
-    loadWorld();
+    if (!loadWorld(CUSTOM) && !loadWorld(CITY)) {
+        gfxExit();
+        return 1;
+    }
     strcpy(update.status, "Check GitHub for new game versions and official worlds.");
-    say("Welcome to Mossbell Vale. Find the trail sign and press A.");
     while (aptMainLoop()) {
         pollUpdate();
         hidScanInput();
@@ -385,7 +443,7 @@ int main(void)
         threadJoin(worker, UINT64_MAX);
         threadFree(worker);
     }
-    journeySave(&world, &journey);
+    journeySave(&world, &journey, savePath);
     gfxExit();
     return 0;
 }

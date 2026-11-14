@@ -10,6 +10,7 @@ namespace MossbellVale.Editor
         private WorldData world;
         private Bitmap player;
         private int zoom = 2;
+        private Rectangle highlighted = Rectangle.Empty;
         private Point hovered = new Point(-1, -1);
 
         public event Action<Point, MouseButtons> StrokeStarted;
@@ -96,6 +97,18 @@ namespace MossbellVale.Editor
             GameArt.DrawPlayer(e.Graphics, player, 0, 0,
                 new Rectangle(spawn.X, spawn.Bottom - GameArt.PlayerHeight * zoom, pixels, GameArt.PlayerHeight * zoom));
 
+            if (!highlighted.IsEmpty)
+            {
+                var bounds = new Rectangle(highlighted.X * pixels, highlighted.Y * pixels,
+                    highlighted.Width * pixels, highlighted.Height * pixels);
+                using (var fill = new SolidBrush(Color.FromArgb(78, 238, 203, 115)))
+                using (var edge = new Pen(Color.FromArgb(250, 233, 159), 3))
+                {
+                    e.Graphics.FillRectangle(fill, bounds);
+                    e.Graphics.DrawRectangle(edge, bounds);
+                }
+            }
+
             if (ContainsTile(hovered))
             {
                 using (var highlight = new Pen(Color.White, 2))
@@ -155,6 +168,12 @@ namespace MossbellVale.Editor
             RedrawTile(hovered);
             hovered = new Point(-1, -1);
             TileHovered(hovered);
+        }
+
+        public void HighlightRegion(Rectangle bounds)
+        {
+            highlighted = bounds;
+            Invalidate();
         }
 
         public void RedrawTile(Point tile)
