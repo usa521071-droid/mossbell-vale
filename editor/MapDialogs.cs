@@ -85,18 +85,21 @@ namespace MossbellVale.Editor
         private readonly TextBox message = new TextBox { MaxLength = 90 };
         private readonly ProjectMap source;
         private readonly Point tile;
+        private readonly GameArt art;
+        private readonly Button chooseTile = new Button { Text = "Choose on map", AutoSize = true };
 
         public MapEvent Result { get; private set; }
 
-        public MapEventDialog(ProjectData project, ProjectMap source, Point tile, MapEvent existing, bool connectionsOnly)
+        public MapEventDialog(ProjectData project, ProjectMap source, Point tile, MapEvent existing, bool connectionsOnly, GameArt art)
         {
             this.source = source;
             this.tile = tile;
+            this.art = art;
             Text = (connectionsOnly ? "Connection" : "Map event") + " at " + tile.X + ", " + tile.Y;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             StartPosition = FormStartPosition.CenterParent;
             Font = new Font("Segoe UI", 10f);
-            ClientSize = new Size(510, 273);
+            ClientSize = new Size(510, 307);
             MaximizeBox = false;
             MinimizeBox = false;
             ShowInTaskbar = false;
@@ -115,17 +118,19 @@ namespace MossbellVale.Editor
                 message.Text = existing.Text;
             }
             type.SelectedIndexChanged += delegate { UpdateFields(); };
+            chooseTile.Click += delegate { PickTarget(); };
             UpdateFields();
 
-            var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 6, Padding = new Padding(15) };
+            var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 7, Padding = new Padding(15) };
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150));
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             NewMapDialog.AddLine(layout, 0, "Event type", type);
             NewMapDialog.AddLine(layout, 1, "Destination map", destination);
             NewMapDialog.AddLine(layout, 2, "Destination X", targetX);
             NewMapDialog.AddLine(layout, 3, "Destination Y", targetY);
-            NewMapDialog.AddLine(layout, 4, "Message", message);
-            NewMapDialog.AddButtons(this, layout, 5, "Save event", SaveEvent);
+            NewMapDialog.AddLine(layout, 4, "Destination tile", chooseTile);
+            NewMapDialog.AddLine(layout, 5, "Message", message);
+            NewMapDialog.AddButtons(this, layout, 6, "Save event", SaveEvent);
             Controls.Add(layout);
         }
 
@@ -140,8 +145,19 @@ namespace MossbellVale.Editor
 
         private void UpdateFields()
         {
-            destination.Enabled = targetX.Enabled = targetY.Enabled = type.SelectedIndex == 0;
+            destination.Enabled = targetX.Enabled = targetY.Enabled = chooseTile.Enabled = type.SelectedIndex == 0;
             message.Enabled = type.SelectedIndex != 0;
+        }
+
+        private void PickTarget()
+        {
+            var map = (ProjectMap)destination.SelectedItem;
+            using (var selection = new CoordinateDialog(art, map, new Point((int)targetX.Value, (int)targetY.Value)))
+                if (selection.ShowDialog(this) == DialogResult.OK)
+                {
+                    targetX.Value = selection.Coordinate.X;
+                    targetY.Value = selection.Coordinate.Y;
+                }
         }
 
         private void SaveEvent()
@@ -173,6 +189,48 @@ namespace MossbellVale.Editor
             {
                 MessageBox.Show(this, error.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
+        }
+    }
+    internal sealed class CoordinateDialog : Form
+    {
+        public Point Coordinate { get; private set; }
+
+        public CoordinateDialog(GameArt art, ProjectMap map, Point target)
+        {
+            Text = "Choose a destination · " + map.Name;
+            StartPosition = FormStartPosition.CenterParent;
+            ClientSize = new Size(640, 493);
+            MinimumSize = new Size(420, 340);
+            var viewport = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = Color.FromArgb(22, 44, 37) };
+            var canvas = new MapCanvas(art) { Zoom = 1 };
+            var instructions = new Label { Text = "Click a walkable tile without an event.", Dock = DockStyle.Bottom, Height = 31,
+                TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(10, 0, 0, 0) };
+            canvas.Display(map.World, null);
+            canvas.SetView(EditorView.Events);
+            canvas.HighlightRegion(new Rectangle(target.X, target.Y, 1, 1));
+            canvas.StrokeStarted += delegate(Point point, MouseButtons button)
+            {
+                if (button != MouseButtons.Left)
+                    return;
+                if (!map.World.CanWalk(point.X, point.Y) || ProjectData.FindEvent(map.World, point.X, point.Y) != null)
+                {
+                    instructions.Text = "This tile is blocked. Choose another destination.";
+                    return;
+                }
+                Coordinate = point;
+                DialogResult = DialogResult.OK;
+            };
+            canvas.StrokeContinued += delegate { };
+            canvas.StrokeEnded += delegate { };
+            canvas.TileHovered += delegate { };
+            viewport.Controls.Add(canvas);
+            Controls.Add(viewport);
+            Controls.Add(instructions);
+            Shown += delegate
+            {
+                viewport.AutoScrollPosition = new Point(Math.Max(0, target.X * GameArt.TileSize - viewport.Width / 2),
+                    Math.Max(0, target.Y * GameArt.TileSize - viewport.Height / 2));
+            };
         }
     }
 }

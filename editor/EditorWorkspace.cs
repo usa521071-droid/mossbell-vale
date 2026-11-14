@@ -128,7 +128,7 @@ namespace MossbellVale.Editor
                 if (view == EditorView.Movement)
                 {
                     tools.Controls.Add(movementBrush);
-                    tools.Controls.Add(InputLabel("Drag to paint. Right-click clears."));
+                    tools.Controls.Add(InputLabel("Drag to paint · × blocked · E event · right-click clears"));
                 }
                 else
                 {
@@ -420,7 +420,7 @@ namespace MossbellVale.Editor
             }
 
             map.Capture = false;
-            using (var dialog = new MapEventDialog(project, activeMap, tile, existing, connectionsOnly))
+            using (var dialog = new MapEventDialog(project, activeMap, tile, existing, connectionsOnly, art))
                 if (dialog.ShowDialog(this) == DialogResult.OK)
                     PutEvent(existing, dialog.Result);
         }

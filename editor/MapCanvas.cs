@@ -108,8 +108,9 @@ namespace MossbellVale.Editor
             var spawn = new Rectangle(world.SpawnX * pixels, world.SpawnY * pixels, pixels, pixels);
             e.Graphics.FillEllipse(Brushes.MediumSpringGreen, spawn.X + pixels / 6, spawn.Y + pixels / 2,
                 pixels * 2 / 3, pixels * 2 / 5);
-            GameArt.DrawPlayer(e.Graphics, player, 0, 0,
-                new Rectangle(spawn.X, spawn.Bottom - GameArt.PlayerHeight * zoom, pixels, GameArt.PlayerHeight * zoom));
+            if (player != null)
+                GameArt.DrawPlayer(e.Graphics, player, 0, 0,
+                    new Rectangle(spawn.X, spawn.Bottom - GameArt.PlayerHeight * zoom, pixels, GameArt.PlayerHeight * zoom));
 
             if (!highlighted.IsEmpty)
             {
