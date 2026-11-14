@@ -4,12 +4,14 @@
 #include "world.h"
 
 #ifndef MOSSBELL_BUILD
-#define MOSSBELL_BUILD 10200
+#define MOSSBELL_BUILD 10300
 #endif
 #ifndef MOSSBELL_VERSION
-#define MOSSBELL_VERSION "1.2.0"
+#define MOSSBELL_VERSION "1.3.0"
 #endif
-#define FIRST_TOWN_REVISION 3
+#if !MOSSBELL_PUBLISHED && !defined(MOSSBELL_GITHUB)
+#define MOSSBELL_GITHUB "usa521071-droid/mossbell-vale"
+#endif
 
 typedef enum {
     UPDATE_CHECK, UPDATE_WORLD, UPDATE_GAME
@@ -22,7 +24,6 @@ typedef struct {
 } Update;
 
 void updateRun(Update *update, UpdateAction action);
-bool updateReadWorld(World *world);
 unsigned updateWorldRevision(void);
 
 #endif

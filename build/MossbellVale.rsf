@@ -1,11 +1,11 @@
 BasicInfo:
-  Title: Mossbell Vale
+  Title: $(APP_TITLE)
   ProductCode: CTR-H-MSVL
   Logo: Homebrew
 
 TitleInfo:
   Category: Application
-  UniqueId: 0xF14B1
+  UniqueId: $(APP_UNIQUE_ID)
 
 Option:
   UseOnSD: true

@@ -67,11 +67,11 @@ static void migrateTile(uint8_t *ground, uint8_t *object)
     }
 }
 
-bool worldParse(World *world, const uint8_t *data, size_t size)
+static bool parseWorld(World *world, const uint8_t *data, size_t size, bool projectMap)
 {
     if (size < WORLD_HEADER || memcmp(data, "RPGW", 4)) return false;
     unsigned version = read16(data + 4);
-    if (version != 1 && version != 2) return false;
+    if (version != 2 && (version != 1 || projectMap)) return false;
     int width = read16(data + 6), height = read16(data + 8);
     int spawnX = read16(data + 10), spawnY = read16(data + 12);
     if (width < 8 || height < 8 || width > WORLD_SIDE || height > WORLD_SIDE ||
@@ -90,7 +90,7 @@ bool worldParse(World *world, const uint8_t *data, size_t size)
         } else if (!currentTile(base, object)) {
             return false;
         }
-        if (i == (size_t)spawn && !passable(base, object)) return false;
+        if (i == (size_t)spawn && !projectMap && !passable(base, object)) return false;
     }
     uint32_t signature = 2166136261u;
     for (size_t i = 0; i < size; i++) signature = (signature ^ data[i]) * 16777619u;
@@ -107,6 +107,16 @@ bool worldParse(World *world, const uint8_t *data, size_t size)
             migrateTile(&world->ground[i], &world->object[i]);
     }
     return true;
+}
+
+bool worldParse(World *world, const uint8_t *data, size_t size)
+{
+    return parseWorld(world, data, size, false);
+}
+
+bool worldParseProjectMap(World *world, const uint8_t *data, size_t size)
+{
+    return parseWorld(world, data, size, true);
 }
 
 bool worldRead(World *world, const char *path)

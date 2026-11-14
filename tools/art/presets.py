@@ -289,7 +289,7 @@ def make_mountain():
     return world
 
 
-def preview(world, tiles, player):
+def preview(world, tiles, player, show_player=True):
     width, height = world.ground.size
     image = Image.new('RGBA', (width * 16, height * 16))
     for x, y in world.cells():
@@ -298,8 +298,9 @@ def preview(world, tiles, player):
         overlay = world.objects.getpixel((x, y))
         if overlay:
             image.alpha_composite(tiles[overlay], position)
-    sx, sy = world.spawn
-    image.alpha_composite(player.crop((0, 0, 16, 24)), (sx * 16, sy * 16 - 8))
+    if show_player:
+        sx, sy = world.spawn
+        image.alpha_composite(player.crop((0, 0, 16, 24)), (sx * 16, sy * 16 - 8))
     return image.convert('RGB')
 
 

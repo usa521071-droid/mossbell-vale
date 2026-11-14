@@ -1,5 +1,6 @@
 using System;
 using System.ComponentModel;
+using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
 
@@ -20,6 +21,8 @@ namespace MossbellVale.Editor
         public readonly int Height;
         public readonly byte[] Ground;
         public readonly byte[] Objects;
+        public readonly byte[] Movement;
+        public readonly List<MapEvent> Events = new List<MapEvent>();
         public readonly byte[] Outfit = new byte[4];
         public int SpawnX;
         public int SpawnY;
@@ -34,11 +37,12 @@ namespace MossbellVale.Editor
             Height = height;
             Ground = new byte[width * height];
             Objects = new byte[width * height];
+            Movement = new byte[width * height];
             SpawnX = width / 2;
             SpawnY = height / 2;
         }
 
-        public static WorldData Read(Stream stream)
+        public static WorldData Read(Stream stream, bool project = false)
         {
             using (var reader = new BinaryReader(stream))
             {
@@ -61,14 +65,14 @@ namespace MossbellVale.Editor
                     world.MigrateMountains();
                     world.WasMigrated = true;
                 }
-                world.Validate();
+                world.Validate(!project);
                 return world;
             }
         }
 
-        public void Save(string path)
+        public byte[] WriteBytes(bool project = false)
         {
-            Validate();
+            Validate(!project);
             using (var stream = new MemoryStream())
             using (var writer = new BinaryWriter(stream))
             {
@@ -82,7 +86,7 @@ namespace MossbellVale.Editor
                 writer.Write(Ground);
                 writer.Write(Objects);
                 writer.Flush();
-                WriteAtomically(path, stream.ToArray());
+                return stream.ToArray();
             }
         }
 
@@ -112,6 +116,8 @@ namespace MossbellVale.Editor
             var copy = new WorldData(Width, Height) { SpawnX = SpawnX, SpawnY = SpawnY };
             Ground.CopyTo(copy.Ground, 0);
             Objects.CopyTo(copy.Objects, 0);
+            Movement.CopyTo(copy.Movement, 0);
+            copy.Events.AddRange(Events);
             Outfit.CopyTo(copy.Outfit, 0);
             return copy;
         }
@@ -126,10 +132,28 @@ namespace MossbellVale.Editor
                     return false;
 
             for (var i = 0; i < Ground.Length; i++)
-                if (Ground[i] != other.Ground[i] || Objects[i] != other.Objects[i])
+                if (Ground[i] != other.Ground[i] || Objects[i] != other.Objects[i] || Movement[i] != other.Movement[i])
                     return false;
 
+            if (Events.Count != other.Events.Count)
+                return false;
+            for (var i = 0; i < Events.Count; i++)
+                if (!Events[i].Matches(other.Events[i]))
+                    return false;
             return true;
+        }
+
+        public bool CanWalk(int x, int y)
+        {
+            if (x < 0 || y < 0 || x >= Width || y >= Height)
+                return false;
+            var index = y * Width + x;
+            return CanWalk(Ground[index], Objects[index], Movement[index]);
+        }
+
+        public static bool CanWalk(byte ground, byte item, byte movement)
+        {
+            return movement == 1 || (movement == 0 && IsWalkable(ground, item));
         }
 
         public static bool IsWalkable(byte ground, byte item)
@@ -160,7 +184,7 @@ namespace MossbellVale.Editor
             }
         }
 
-        private void Validate()
+        private void Validate(bool checkTerrainSpawn)
         {
             foreach (var choice in Outfit)
                 if (choice >= PaletteSize)
@@ -171,7 +195,7 @@ namespace MossbellVale.Editor
                     throw new InvalidDataException("The world file contains an unknown tile.");
 
             if (SpawnX < 0 || SpawnX >= Width || SpawnY < 0 || SpawnY >= Height ||
-                !IsWalkable(Ground[SpawnY * Width + SpawnX], Objects[SpawnY * Width + SpawnX]))
+                (checkTerrainSpawn && !IsWalkable(Ground[SpawnY * Width + SpawnX], Objects[SpawnY * Width + SpawnX])))
                 throw new InvalidDataException("The player's starting tile must be walkable and inside the map.");
         }
 

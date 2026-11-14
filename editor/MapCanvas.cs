@@ -9,6 +9,7 @@ namespace MossbellVale.Editor
         private readonly GameArt art;
         private WorldData world;
         private Bitmap player;
+        private EditorView view;
         private int zoom = 2;
         private Rectangle highlighted = Rectangle.Empty;
         private Point hovered = new Point(-1, -1);
@@ -41,8 +42,16 @@ namespace MossbellVale.Editor
             ShowGrid = true;
         }
 
+        public void SetView(EditorView display)
+        {
+            view = display;
+            HighlightRegion(Rectangle.Empty);
+        }
+
         public void Display(WorldData map, Bitmap sprite)
         {
+            if (!Object.ReferenceEquals(world, map))
+                highlighted = Rectangle.Empty;
             world = map;
             player = sprite;
             ResizeCanvas();
@@ -80,6 +89,11 @@ namespace MossbellVale.Editor
                 }
             }
 
+            if (view == EditorView.Movement)
+                DrawMovement(e.Graphics, firstX, lastX, firstY, lastY, pixels);
+            else if (view == EditorView.Events || view == EditorView.Connections)
+                DrawEvents(e.Graphics, pixels);
+
             if (ShowGrid)
             {
                 using (var grid = new Pen(Color.FromArgb(45, 12, 22, 18)))
@@ -113,6 +127,54 @@ namespace MossbellVale.Editor
             {
                 using (var highlight = new Pen(Color.White, 2))
                     e.Graphics.DrawRectangle(highlight, hovered.X * pixels + 1, hovered.Y * pixels + 1, pixels - 2, pixels - 2);
+            }
+        }
+
+        private void DrawMovement(Graphics graphics, int firstX, int lastX, int firstY, int lastY, int pixels)
+        {
+            using (var blocked = new SolidBrush(Color.FromArgb(149, 157, 38, 49)))
+            using (var allowed = new SolidBrush(Color.FromArgb(151, 30, 121, 104)))
+            using (var terrain = new SolidBrush(Color.FromArgb(91, 28, 37, 43)))
+            using (var font = new Font("Segoe UI", Math.Max(7, pixels * 0.40f), GraphicsUnit.Pixel))
+            using (var centered = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
+            {
+                for (var y = firstY; y <= lastY; y++)
+                    for (var x = firstX; x <= lastX; x++)
+                    {
+                        var i = y * world.Width + x;
+                        var value = world.Movement[i];
+                        var source = ProjectData.FindEvent(world, x, y);
+                        bool eventBlocks = source != null && source.Type != MapEventType.Warp;
+                        var brush = eventBlocks || value == 2 ? blocked : value == 1 ? allowed :
+                            (WorldData.IsWalkable(world.Ground[i], world.Objects[i]) ? null : terrain);
+                        if (brush == null)
+                            continue;
+                        var rectangle = new Rectangle(x * pixels, y * pixels, pixels, pixels);
+                        graphics.FillRectangle(brush, rectangle);
+                        graphics.DrawString(eventBlocks ? "E" : value == 0 ? "×" : value.ToString(), font, Brushes.White, rectangle, centered);
+                    }
+            }
+        }
+
+        private void DrawEvents(Graphics graphics, int pixels)
+        {
+            using (var warp = new SolidBrush(Color.FromArgb(44, 98, 169)))
+            using (var sign = new SolidBrush(Color.FromArgb(132, 91, 51)))
+            using (var npc = new SolidBrush(Color.FromArgb(126, 67, 137)))
+            using (var font = new Font("Segoe UI", Math.Max(8, pixels * 0.43f), FontStyle.Bold, GraphicsUnit.Pixel))
+            using (var centered = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
+            {
+                foreach (var item in world.Events)
+                {
+                    if (view == EditorView.Connections && item.Type != MapEventType.Warp)
+                        continue;
+                    var bounds = new Rectangle(item.X * pixels + 2, item.Y * pixels + 2, pixels - 4, pixels - 4);
+                    var brush = item.Type == MapEventType.Warp ? warp : item.Type == MapEventType.Sign ? sign : npc;
+                    var label = item.Type == MapEventType.Warp ? "W" : item.Type == MapEventType.Sign ? "S" : "N";
+                    graphics.FillEllipse(brush, bounds);
+                    graphics.DrawEllipse(Pens.White, bounds);
+                    graphics.DrawString(label, font, Brushes.White, bounds, centered);
+                }
             }
         }
 

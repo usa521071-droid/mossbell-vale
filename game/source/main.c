@@ -3,38 +3,36 @@
 #include <string.h>
 
 #include "draw.h"
+#include "project.h"
 #include "update.h"
 #include "world.h"
 
 extern const unsigned char asset_world[];
 extern const unsigned int asset_world_size;
-extern const unsigned char asset_dungeon[], asset_mountain[];
-extern const unsigned int asset_dungeon_size, asset_mountain_size;
+extern const unsigned char asset_project[], asset_project_art[];
+extern const unsigned int asset_project_size, asset_project_art_size;
 
 enum { EXPLORE, MENU, WARDROBE, UPDATES, REGIONS };
-enum { CITY, DUNGEON, MOUNTAIN, CUSTOM };
 enum { TILE = 32, TOP_WIDTH = 400, BOTTOM_WIDTH = 320, HEIGHT = 240 };
 static const uint32_t ink = 0xd5e9cd, panel = 0xfffbeb, dark = 0x477b62;
 static const uint32_t border = 0x7bad84, paper = 0x303945, muted = 0x526558, gold = 0x986045;
 static const uint32_t frame = 0x394d58, highlight = 0xfff0b8;
 static const int dx[] = {0, -1, 1, 0}, dy[] = {1, 0, 0, -1};
 static const unsigned keys[] = {KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_UP};
-static const char *const regionNames[] = {"Bellwick Town", "Lantern Cavern", "Highstone Pass", "Custom World"};
-static const char *const saves[] = {
-    WORLD_DIR "/town.sav", WORLD_DIR "/cave.sav",
-    WORLD_DIR "/mountain.sav", WORLD_DIR "/custom.sav",
-};
-
 static World world;
 static Journey journey;
+static Project project;
+static ProjectProgress progress;
+static int mapIndex = -1;
 static Update update, work;
 static UpdateAction pendingAction;
 static Thread worker;
 static int mode, selected, direction, elapsed, animation, xPixel, yPixel;
-static int total, found, toastTime, region, lastDirection = -1;
+static int total, found, toastTime, lastDirection = -1;
 static unsigned installedWorldRevision;
 static const char *savePath;
-static bool hasCustomWorld;
+static const char *mapName;
+static bool useCustom;
 static int viewScale = 2;
 static char toast[100];
 
@@ -62,44 +60,100 @@ static void window(Screen screen, int x, int y, int width, int height)
     fill(screen, x + 5, y + 4, width - 10, 1, 0xffffff);
 }
 
-static bool loadWorld(int next)
+static const Map *activeMap(void)
 {
-    installedWorldRevision = updateWorldRevision();
-    bool updated = next == CITY && updateReadWorld(&world);
-    bool ok = updated;
-    if (next == CUSTOM) ok = worldRead(&world, CUSTOM_WORLD);
-    if (next == CITY && !updated) ok = worldParse(&world, asset_world, asset_world_size);
-    if (next == DUNGEON) ok = worldParse(&world, asset_dungeon, asset_dungeon_size);
-    if (next == MOUNTAIN) ok = worldParse(&world, asset_mountain, asset_mountain_size);
-    if (!ok) return false;
-    if (next == CUSTOM) hasCustomWorld = true;
-    region = next;
-    savePath = updated ? WORLD_DIR "/town-online.sav" : saves[region];
-    resetArt();
-    if (region == CUSTOM) loadCustomArt(CUSTOM_ART);
-    journeyNew(&world, &journey);
-    journeyLoad(&world, &journey, savePath);
+    return mapIndex >= 0 ? &project.maps[mapIndex] : NULL;
+}
+
+static void placePlayer(void)
+{
     xPixel = journey.x * TILE;
     yPixel = journey.y * TILE;
-    direction = 0;
     elapsed = 0;
     animation = 0;
+}
+
+static void openMap(int index)
+{
+    mapIndex = index;
+    const Map *map = activeMap();
+    worldParseProjectMap(&world, map->raw, map->size);
+    mapName = map->name;
+}
+
+static bool saveJourney(void)
+{
+    if (activeMap()) return projectSave(&project, &progress, &journey, mapIndex, savePath);
+    return journeySave(&world, &journey, savePath);
+}
+
+static bool loadGame(void)
+{
+    projectClose(&project);
+    memset(&progress, 0, sizeof(progress));
+    mapIndex = -1;
+    direction = 0;
     lastDirection = -1;
-    total = worldGlowbells(&world);
-    found = journeyCount(&world, &journey);
+    installedWorldRevision = updateWorldRevision();
+    useCustom = projectRead(&project, CUSTOM_PROJECT, NULL);
+    unsigned revision = 0;
+    bool updated = false;
+    if (!useCustom) {
+        projectClose(&project);
+        useCustom = worldRead(&world, CUSTOM_WORLD);
+        if (!useCustom) {
+            updated = projectRead(&project, ONLINE_PROJECT, &revision);
+            if (!updated) {
+                installedWorldRevision = 0;
+                projectClose(&project);
+                if (!projectParse(&project, asset_project, asset_project_size)) projectClose(&project);
+            }
+        }
+    }
+    resetArt();
+    if (asset_project_art_size) loadArtBytes(asset_project_art, asset_project_art_size);
+    if (useCustom) {
+        if (!loadCustomArt(CUSTOM_ART) && asset_project_art_size)
+            loadArtBytes(asset_project_art, asset_project_art_size);
+    }
+    if (project.count) {
+        savePath = useCustom ? WORLD_DIR "/custom-project.sav" :
+            updated ? WORLD_DIR "/online-project.sav" : WORLD_DIR "/project.sav";
+        int index = projectResume(&project, &progress, &journey, savePath);
+        openMap(index >= 0 ? index : project.start);
+        if (index < 0) journeyNew(&world, &journey);
+        total = project.bells;
+        found = projectFound(&project, &progress);
+    } else {
+        if (!useCustom && !worldParse(&world, asset_world, asset_world_size)) return false;
+        mapName = useCustom ? "Custom map" : "Mossbell Vale";
+        savePath = useCustom ? WORLD_DIR "/custom.sav" : WORLD_DIR "/town.sav";
+        journeyNew(&world, &journey);
+        journeyLoad(&world, &journey, savePath);
+        total = worldGlowbells(&world);
+        found = journeyCount(&world, &journey);
+    }
+    placePlayer();
     return true;
 }
 
 static void interact(void)
 {
-    int object = worldObject(&world, journey.x + dx[direction], journey.y + dy[direction]);
+    int x = journey.x + dx[direction], y = journey.y + dy[direction];
+    const Map *map = activeMap();
+    const ProjectEvent *event = map ? mapEvent(map, x, y) : NULL;
+    if (event && event->type != PROJECT_WARP) {
+        say(event->text);
+        return;
+    }
+    int object = worldObject(&world, x, y);
     if (object == SIGN)
         say("Welcome, trailkeeper! Gather the glowbells, then ring the stone arch.");
     else if (object == ARCH && found < total)
         say("The arch is quiet. Gather the remaining glowbells.");
     else if (object == ARCH && !journey.completed) {
         journey.completed = true;
-        if (journeySave(&world, &journey, savePath))
+        if (saveJourney())
             say("The arch sings. You restored the light of Mossbell Vale!");
         else
             say("The arch sings! Progress could not be saved to the SD card.");
@@ -113,12 +167,30 @@ static void collect(void)
     if (world.object[index] != GLOWBELL || journeyFound(&journey, index)) return;
     journeyCollect(&journey, index);
     found++;
-    if (!journeySave(&world, &journey, savePath))
+    if (!saveJourney())
         say("Glowbell found. Progress could not be saved to the SD card.");
     else if (found == total)
         say("All glowbells found. Face the stone arch and press A.");
     else
         say("You found a glowbell!");
+}
+
+static void finishStep(void)
+{
+    collect();
+    const Map *map = activeMap();
+    const ProjectEvent *event = map ? mapEvent(map, journey.x, journey.y) : NULL;
+    if (!event || event->type != PROJECT_WARP) return;
+    int next = projectIndex(&project, event->target);
+    if (next < 0) return;
+    memcpy(progress.collected[mapIndex], journey.found, sizeof(journey.found));
+    openMap(next);
+    journey.x = event->targetX;
+    journey.y = event->targetY;
+    memcpy(journey.found, progress.collected[next], sizeof(journey.found));
+    placePlayer();
+    say(event->text[0] ? event->text : mapName);
+    saveJourney();
 }
 
 static void move(unsigned held, unsigned pressed)
@@ -130,7 +202,7 @@ static void move(unsigned held, unsigned pressed)
         yPixel += dy[direction] * speed;
         elapsed -= speed;
         animation = 1 + ((xPixel + yPixel) >> 4 & 1);
-        if (!elapsed) collect();
+        if (!elapsed) finishStep();
         return;
     }
     animation = 0;
@@ -146,7 +218,8 @@ static void move(unsigned held, unsigned pressed)
     if (next < 0) return;
     direction = next;
     int x = journey.x + dx[next], y = journey.y + dy[next];
-    if (!worldWalkable(&world, x, y)) return;
+    const Map *map = activeMap();
+    if (!(map ? mapWalkable(map, &world, x, y) : worldWalkable(&world, x, y))) return;
     journey.x = x;
     journey.y = y;
     elapsed = TILE;
@@ -187,6 +260,20 @@ static void drawWorld(Screen screen)
             if (object && !(object == GLOWBELL && journeyFound(&journey, index)))
                 drawTile(screen, x * tile - cameraX, y * tile - cameraY, object, viewScale);
         }
+        const Map *map = activeMap();
+        if (map) {
+            for (unsigned i = 0; i < map->eventCount; i++) {
+                const ProjectEvent *event = &map->events[i];
+                if (event->y != y || event->x < left || event->x > right) continue;
+                int x = event->x * tile - cameraX, py = y * tile - cameraY;
+                if (event->type == PROJECT_NPC) {
+                    const uint8_t colors[] = {2, 3, 1, 3};
+                    drawPlayer(screen, x, py - 8 * viewScale, 0, 0, viewScale, colors);
+                } else if (event->type == PROJECT_SIGN && !world.object[y * world.width + event->x]) {
+                    drawTile(screen, x, py, SIGN, viewScale);
+                }
+            }
+        }
     }
     if (!playerDrawn) drawWorldPlayer(screen, cameraX, cameraY);
     if (toastTime && mode == EXPLORE) {
@@ -205,8 +292,9 @@ static void heading(Screen screen, const char *title, const char *subtitle)
     fill(screen, 0, 52, BOTTOM_WIDTH, 2, frame);
     fill(screen, 0, 54, BOTTOM_WIDTH, 3, border);
     drawTile(screen, 14, 10, GLOWBELL, 2);
-    label(screen, 57, 13, title, frame, 2);
-    label(screen, 55, 11, title, 0xfff9d7, 2);
+    int scale = strlen(title) <= 21 ? 2 : 1;
+    label(screen, 57, 13 + (scale == 1 ? 6 : 0), title, frame, scale);
+    label(screen, 55, 11 + (scale == 1 ? 6 : 0), title, 0xfff9d7, scale);
     label(screen, 55, 36, subtitle, 0xecf7d8, 1);
 }
 
@@ -254,7 +342,7 @@ static void drawBottom(Screen screen)
 {
     char text[64];
     if (mode == EXPLORE) {
-        heading(screen, "Mossbell Vale", regionNames[region]);
+        heading(screen, MOSSBELL_TITLE, mapName);
         window(screen, 14, 67, 112, 130);
         label(screen, 24, 80, "Field Map", muted, 1);
         drawMinimap(screen);
@@ -271,16 +359,19 @@ static void drawBottom(Screen screen)
     } else if (mode == MENU) {
         heading(screen, "Trail Menu", "Up / Down  Select     A  Open");
         row(screen, 0, 70, "Wardrobe", true);
-        row(screen, 1, 100, "Choose a region", true);
+        row(screen, 1, 100, "Connected maps", activeMap() != NULL);
         row(screen, 2, 130, "Updates", true);
         row(screen, 3, 160, "Save journey", true);
         row(screen, 4, 190, "Return to Homebrew / HOME", true);
         label(screen, 24, 224, "B RETURN TO THE VALE", muted, 1);
     } else if (mode == REGIONS) {
-        heading(screen, "Regions", "Up / Down  Select     A  Travel");
-        for (int i = 0; i < 4; i++)
-            row(screen, i, 72 + i * 30, regionNames[i], i != CUSTOM || hasCustomWorld);
-        label(screen, 24, 224, "B BACK", muted, 1);
+        heading(screen, "Connected maps", "Walk roads and doorways to travel");
+        int first = clamp(selected - 2, 0, project.count < 5 ? 0 : project.count - 5);
+        for (int i = first; i < project.count && i < first + 5; i++) {
+            snprintf(text, sizeof(text), "%s%s", project.maps[i].name, i == mapIndex ? "  (Here)" : "");
+            row(screen, i, 67 + (i - first) * 29, text, true);
+        }
+        label(screen, 24, 224, "UP / DOWN VIEW    B BACK", muted, 1);
     } else if (mode == WARDROBE) {
         heading(screen, "Wardrobe", "Left / Right  Change     B  Done");
         for (int i = 0; i < OUTFIT_PARTS; i++) {
@@ -317,14 +408,13 @@ static void pollUpdate(void)
     threadFree(worker);
     worker = NULL;
     update = work;
-    if (pendingAction == UPDATE_WORLD && updateWorldRevision() == update.worldRevision) {
+    if (pendingAction == UPDATE_WORLD && update.worldRevision > installedWorldRevision &&
+        updateWorldRevision() == update.worldRevision) {
         installedWorldRevision = update.worldRevision;
-        if (region == CITY) {
-            journeySave(&world, &journey, savePath);
-            loadWorld(CITY);
-        } else {
-            strcpy(update.status, "Town update saved. Choose Bellwick Town to visit.");
-        }
+        if (!useCustom) {
+            saveJourney();
+            loadGame();
+        } else strcpy(update.status, "Official world saved. Your SD project stays active.");
     }
 }
 
@@ -379,7 +469,7 @@ static bool input(unsigned pressed, unsigned held)
     if (mode == WARDROBE) {
         if (pressed & (KEY_B | KEY_START | KEY_SELECT)) {
             selectMode(MENU);
-            if (!journeySave(&world, &journey, savePath)) say("Could not save the outfit to the SD card.");
+            if (!saveJourney()) say("Could not save the outfit to the SD card.");
             return true;
         }
         if (pressed & KEY_UP) selected = (selected + 3) % 4;
@@ -393,9 +483,10 @@ static bool input(unsigned pressed, unsigned held)
         selectMode(mode == MENU ? EXPLORE : MENU);
         return true;
     }
-    int count = mode == MENU ? 5 : mode == REGIONS ? 4 : 3;
+    int count = mode == MENU ? 5 : mode == REGIONS ? project.count : 3;
     if (pressed & KEY_UP) selected = (selected + count - 1) % count;
     if (pressed & KEY_DOWN) selected = (selected + 1) % count;
+    if (mode == REGIONS) return true;
     bool activate = pressed & KEY_A;
     if ((pressed & KEY_TOUCH) && touch.px >= 14 && touch.px < 306) {
         int hit = touchRow(touch.py, mode == MENU ? 70 : 72, count);
@@ -409,19 +500,17 @@ static bool input(unsigned pressed, unsigned held)
         startUpdate();
         return true;
     }
-    if (mode == REGIONS) {
-        journeySave(&world, &journey, savePath);
-        if (!loadWorld(selected)) say("Export a world from the Windows editor to open it here.");
-        else say(regionNames[region]);
-        selectMode(EXPLORE);
-        return true;
-    }
     switch (selected) {
     case 0: selectMode(WARDROBE); break;
-    case 1: selectMode(REGIONS); break;
+    case 1:
+        if (activeMap()) {
+            selectMode(REGIONS);
+            selected = mapIndex;
+        }
+        break;
     case 2: selectMode(UPDATES); break;
     case 3:
-        say(journeySave(&world, &journey, savePath) ? "Journey saved." : "Could not save to the SD card.");
+        say(saveJourney() ? "Journey saved." : "Could not save to the SD card.");
         selectMode(EXPLORE);
         break;
     case 4: return false;
@@ -432,7 +521,7 @@ static bool input(unsigned pressed, unsigned held)
 int main(void)
 {
     gfxInit(GSP_RGB565_OES, GSP_RGB565_OES, false);
-    if (!loadWorld(CUSTOM) && !loadWorld(CITY)) {
+    if (!loadGame()) {
         gfxExit();
         return 1;
     }
@@ -454,7 +543,8 @@ int main(void)
         threadJoin(worker, UINT64_MAX);
         threadFree(worker);
     }
-    journeySave(&world, &journey, savePath);
+    saveJourney();
+    projectClose(&project);
     gfxExit();
     return 0;
 }

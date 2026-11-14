@@ -36,21 +36,11 @@ void resetArt(void)
     player = asset_player;
 }
 
-bool loadCustomArt(const char *path)
+static bool finishArt(const unsigned char *header)
 {
     static const unsigned char expected[] = {'R','P','G','A',2,0,0,0};
-    unsigned char header[sizeof(expected)];
-    resetArt();
-    FILE *file = fopen(path, "rb");
-    if (!file) return false;
-    bool ok = fread(header, 1, sizeof(header), file) == sizeof(header) &&
-        memcmp(header, expected, 4) == 0 &&
-        (header[4] == 1 || header[4] == 2) &&
-        memcmp(header + 5, expected + 5, 3) == 0 &&
-        fread(editedArt, 1, sizeof(editedArt), file) == sizeof(editedArt) &&
-        fgetc(file) == EOF && !ferror(file);
-    fclose(file);
-    if (!ok) return false;
+    if (memcmp(header, expected, 4) || (header[4] != 1 && header[4] != 2) ||
+        memcmp(header + 5, expected + 5, 3)) return false;
     if (header[4] == 1) {
         static const int moved[] = {20, 21, 60, 61, 62};
         for (size_t i = 0; i < sizeof(moved) / sizeof(*moved); i++)
@@ -63,6 +53,26 @@ bool loadCustomArt(const char *path)
     return true;
 }
 
+bool loadArtBytes(const unsigned char *data, unsigned size)
+{
+    resetArt();
+    if (size != 8 + sizeof(editedArt)) return false;
+    memcpy(editedArt, data + 8, sizeof(editedArt));
+    return finishArt(data);
+}
+
+bool loadCustomArt(const char *path)
+{
+    unsigned char header[8];
+    resetArt();
+    FILE *file = fopen(path, "rb");
+    if (!file) return false;
+    bool ok = fread(header, 1, sizeof(header), file) == sizeof(header) &&
+        fread(editedArt, 1, sizeof(editedArt), file) == sizeof(editedArt) &&
+        fgetc(file) == EOF && !ferror(file);
+    fclose(file);
+    return ok && finishArt(header);
+}
 static uint16_t pack(uint32_t color)
 {
     return (uint16_t)(((color >> 8) & 0xf800) | ((color >> 5) & 0x07e0) |
@@ -118,9 +128,11 @@ static const uint8_t *glyph(unsigned char letter)
         {0,0,0,0,0,4,4}, {0,0,0,0,4,4,8}, {0,4,4,0,4,4,0},
         {0,0,0,31,0,0,0}, {1,1,2,4,8,16,16}, {4,4,4,4,4,0,4},
         {14,17,1,2,4,0,4}, {4,4,8,0,0,0,0}, {0,4,8,16,8,4,0},
-        {0,4,2,1,2,4,0},
+        {0,4,2,1,2,4,0}, {2,4,8,8,8,4,2}, {8,4,2,2,2,4,8},
+        {0,0,0,0,0,0,31}, {10,10,20,0,0,0,0}, {0,4,4,31,4,4,0},
+        {0,0,31,0,31,0,0}, {10,10,31,10,31,10,10},
     };
-    const char *symbols = ".,:-/!?'<>";
+    const char *symbols = ".,:-/!?'<>()_\"+=#";
     if (letter >= '0' && letter <= '9') return font[letter - '0'];
     if (letter >= 'A' && letter <= 'Z') return font[10 + letter - 'A'];
     if (letter >= 'a' && letter <= 'z') return lowercase[letter - 'a'];

@@ -14,6 +14,7 @@ void label(Screen screen, int x, int y, const char *text, uint32_t color, int sc
 void wrapped(Screen screen, int x, int y, int width, const char *text, uint32_t color);
 void drawTile(Screen screen, int x, int y, int tile, int scale);
 bool loadCustomArt(const char *path);
+bool loadArtBytes(const unsigned char *data, unsigned size);
 void resetArt(void);
 void drawPlayer(Screen screen, int x, int y, int direction, int frame, int scale,
     const uint8_t *outfit);

@@ -1,9 +1,51 @@
 param(
     [Parameter(Mandatory)][string] $Banner,
-    [Parameter(Mandatory)][string] $Scratch
+    [Parameter(Mandatory)][string] $Scratch,
+    [string] $Icon,
+    [string] $Title
 )
 
-Copy-Item -LiteralPath $Banner -Destination (Join-Path $Scratch 'banner.png')
+$bannerPath = Join-Path $Scratch 'banner.png'
+if ($Title) {
+    Add-Type -AssemblyName System.Drawing
+    $bitmap = [Drawing.Bitmap]::new(256, 128)
+    $graphics = [Drawing.Graphics]::FromImage($bitmap)
+    $logo = [Drawing.Image]::FromFile($Icon)
+    $border = [Drawing.Pen]::new([Drawing.ColorTranslator]::FromHtml('#74a889'), 2)
+    $paper = [Drawing.SolidBrush]::new([Drawing.ColorTranslator]::FromHtml('#fff0ba'))
+    $format = [Drawing.StringFormat]::new()
+    $font = $null
+    try {
+        $graphics.Clear([Drawing.ColorTranslator]::FromHtml('#214539'))
+        $graphics.InterpolationMode = [Drawing.Drawing2D.InterpolationMode]::NearestNeighbor
+        $graphics.TextRenderingHint = [Drawing.Text.TextRenderingHint]::SingleBitPerPixelGridFit
+        $graphics.DrawRectangle($border, 8, 8, 239, 111)
+        $graphics.DrawLine($border, 74, 23, 74, 105)
+        $graphics.DrawImage($logo, [Drawing.Rectangle]::new(17, 42, 48, 48))
+        $format.Alignment = [Drawing.StringAlignment]::Center
+        $format.LineAlignment = [Drawing.StringAlignment]::Center
+        $bounds = [Drawing.RectangleF]::new(82, 18, 151, 92)
+        $size = 21
+        do {
+            if ($font) { $font.Dispose() }
+            $font = [Drawing.Font]::new('Consolas', $size, [Drawing.FontStyle]::Bold, [Drawing.GraphicsUnit]::Pixel)
+            $measured = $graphics.MeasureString($Title, $font, [Drawing.SizeF]::new($bounds.Width, 1000), $format)
+            $size--
+        } while ($measured.Height -gt 76 -and $size -gt 9)
+        $graphics.DrawString($Title, $font, $paper, $bounds, $format)
+        $bitmap.Save($bannerPath, [Drawing.Imaging.ImageFormat]::Png)
+    } finally {
+        if ($font) { $font.Dispose() }
+        $format.Dispose()
+        $paper.Dispose()
+        $border.Dispose()
+        $logo.Dispose()
+        $graphics.Dispose()
+        $bitmap.Dispose()
+    }
+} else {
+    Copy-Item -LiteralPath $Banner -Destination $bannerPath
+}
 
 $sampleRate = 22050
 $sampleCount = 11025

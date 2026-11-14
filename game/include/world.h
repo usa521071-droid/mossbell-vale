@@ -9,7 +9,13 @@
 #define WORLD_CELLS (WORLD_SIDE * WORLD_SIDE)
 #define WORLD_HEADER 18
 #define WORLD_FILE_MAX (WORLD_HEADER + WORLD_CELLS * 2)
-#define WORLD_DIR "sdmc:/3ds/MossbellVale"
+#ifndef MOSSBELL_SD_DIR
+#define MOSSBELL_SD_DIR "sdmc:/3ds/MossbellVale"
+#endif
+#ifndef MOSSBELL_TITLE
+#define MOSSBELL_TITLE "Mossbell Vale"
+#endif
+#define WORLD_DIR MOSSBELL_SD_DIR
 #define CUSTOM_WORLD WORLD_DIR "/world.rpgw"
 #define CUSTOM_ART WORLD_DIR "/art.rpga"
 #define ONLINE_WORLD WORLD_DIR "/online.rpgw"
@@ -36,6 +42,7 @@ extern const char *const colorNames[OUTFIT_PARTS][6];
 extern const uint32_t outfitColors[OUTFIT_PARTS][6][2];
 
 bool worldParse(World *world, const uint8_t *data, size_t size);
+bool worldParseProjectMap(World *world, const uint8_t *data, size_t size);
 bool worldRead(World *world, const char *path);
 bool worldWalkable(const World *world, int x, int y);
 int worldObject(const World *world, int x, int y);

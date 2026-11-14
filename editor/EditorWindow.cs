@@ -2,25 +2,27 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
+using System.Linq;
 using System.Windows.Forms;
 
 namespace MossbellVale.Editor
 {
-    internal sealed class EditorWindow : Form
+    internal sealed partial class EditorWindow : Form
     {
         private static readonly Color Forest = Color.FromArgb(22, 44, 37);
         private static readonly Color Green = Color.FromArgb(43, 78, 60);
         private static readonly Color Paper = Color.FromArgb(246, 249, 243);
         private static readonly Color Ink = Color.FromArgb(27, 48, 39);
         private static readonly Color Muted = Color.FromArgb(78, 102, 90);
-        private const string WorldFilter = "Mossbell Vale world (*.rpgw)|*.rpgw";
+        private const string WorldFilter = "Mossbell Vale project (*.rpgp)|*.rpgp";
+        private const string OpenFilter = "Mossbell Vale project or map (*.rpgp;*.rpgw)|*.rpgp;*.rpgw";
         private const int HistoryLimit = 64;
 
         private readonly GameArt art = new GameArt();
         private readonly ToolTip tips = new ToolTip();
         private readonly Timer previewTimer = new Timer { Interval = 150 };
-        private readonly List<WorldData> undo = new List<WorldData>();
-        private readonly List<WorldData> redo = new List<WorldData>();
+        private List<WorldData> undo = new List<WorldData>();
+        private List<WorldData> redo = new List<WorldData>();
         private readonly RadioButton[] tileButtons = new RadioButton[16];
         private readonly ComboBox tileGroup = MakeSelector("Tile collection");
         private readonly ComboBox stampChoice = MakeSelector("Tile stamp");
@@ -41,7 +43,9 @@ namespace MossbellVale.Editor
         private Button saveButton;
 
         private WorldData world;
-        private WorldData saved;
+        private ProjectData project;
+        private ProjectData saved;
+        private ProjectMap activeMap;
         private byte[] savedArt;
         private byte[] currentArt;
         private int cachedArtRevision = -1;
@@ -80,9 +84,9 @@ namespace MossbellVale.Editor
             mapViewport.Controls.Add(map);
 
             var layout = new TableLayoutPanel { ColumnCount = 3, RowCount = 3, Dock = DockStyle.Fill };
-            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 234));
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 232));
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 224));
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 243));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 102));
             layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
@@ -91,9 +95,9 @@ namespace MossbellVale.Editor
             var footer = BuildFooter();
             layout.Controls.Add(header, 0, 0);
             layout.SetColumnSpan(header, 3);
-            layout.Controls.Add(BuildTilePanel(), 0, 1);
-            layout.Controls.Add(mapViewport, 1, 1);
-            layout.Controls.Add(BuildCharacterPanel(), 2, 1);
+            layout.Controls.Add(BuildMapTree(), 0, 1);
+            layout.Controls.Add(BuildWorkspace(), 1, 1);
+            layout.Controls.Add(BuildTilePanel(), 2, 1);
             layout.Controls.Add(footer, 0, 2);
             layout.SetColumnSpan(footer, 3);
             Controls.Add(layout);
@@ -106,7 +110,7 @@ namespace MossbellVale.Editor
             };
             previewTimer.Start();
             FormClosing += delegate(object sender, FormClosingEventArgs args) { args.Cancel = !ConfirmChanges(); };
-            LoadWorld(GameArt.ReadPreset("world"), null, "Town preset opened");
+            LoadProject(ProjectData.ReadDefault(), null, "Starter project opened");
             Shown += delegate { CenterOnSpawn(); };
             if (!String.IsNullOrWhiteSpace(initialPath))
                 OpenWorld(initialPath);
@@ -160,8 +164,9 @@ namespace MossbellVale.Editor
             commands.Controls.Add(presets);
             saveButton = AddCommand(commands, "Save", "Ctrl+S", delegate { SaveWorld(false); });
             AddCommand(commands, "Save As", "Ctrl+Shift+S", delegate { SaveWorld(true); });
-            AddCommand(commands, "Export to SD", "Choose the root of your 3DS SD card.", ExportWorld);
-            AddCommand(commands, "Sprite Studio", "Ctrl+E · Edit tile and character pixels", OpenSpriteStudio);
+            AddCommand(commands, "Export", "Export the project to your 3DS SD card.", ExportWorld);
+            AddCommand(commands, "Publish CIA", "Build a 3DS game or publish a world update.", PublishProject);
+            AddCommand(commands, "Sprites", "Ctrl+E · Edit tile and character pixels", OpenSpriteStudio);
             undoButton = AddCommand(commands, "Undo", "Ctrl+Z", delegate { Restore(undo, redo); });
             redoButton = AddCommand(commands, "Redo", "Ctrl+Y", delegate { Restore(redo, undo); });
             var zoom = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 75, Margin = new Padding(8, 5, 4, 0),
@@ -246,6 +251,9 @@ namespace MossbellVale.Editor
         private Control BuildCharacterPanel()
         {
             var panel = CreateSidePanel();
+            panel.Width = 218;
+            panel.Height = 510;
+            panel.Dock = DockStyle.None;
             panel.Controls.Add(CreateHeading("Character"));
             preview.Size = new Size(190, 110);
             preview.Margin = new Padding(0, 8, 0, 8);
@@ -455,6 +463,18 @@ namespace MossbellVale.Editor
             strokeStart = world.Copy();
             previousTile = tile;
             strokeButton = button;
+            if (editingView == EditorView.Events || editingView == EditorView.Connections)
+            {
+                strokeStart = null;
+                if (button == MouseButtons.Left)
+                    EditMapEvent(tile, editingView == EditorView.Connections);
+                return;
+            }
+            if (editingView == EditorView.Movement)
+            {
+                PaintMovement(tile);
+                return;
+            }
             drawingRegion = button == MouseButtons.Left && terrainChoice.SelectedIndex > 0;
             if (drawingRegion)
             {
@@ -467,7 +487,7 @@ namespace MossbellVale.Editor
 
         private void ContinueStroke(Point tile)
         {
-            if (strokeStart == null || previousTile == tile || (spawnTool.Checked && strokeButton == MouseButtons.Left))
+            if (strokeStart == null || previousTile == tile || (editingView == EditorView.Map && spawnTool.Checked && strokeButton == MouseButtons.Left))
                 return;
 
             if (drawingRegion)
@@ -476,7 +496,7 @@ namespace MossbellVale.Editor
                 map.HighlightRegion(RegionBounds());
                 return;
             }
-            if (stampChoice.SelectedIndex > 0 && strokeButton == MouseButtons.Left)
+            if (editingView == EditorView.Map && stampChoice.SelectedIndex > 0 && strokeButton == MouseButtons.Left)
                 return;
 
             var x = previousTile.X;
@@ -500,7 +520,10 @@ namespace MossbellVale.Editor
                     error += dx;
                     y += stepY;
                 }
-                PaintTile(new Point(x, y));
+                if (editingView == EditorView.Movement)
+                    PaintMovement(new Point(x, y));
+                else
+                    PaintTile(new Point(x, y));
             }
             previousTile = tile;
         }
@@ -593,7 +616,7 @@ namespace MossbellVale.Editor
                 item = 0;
             else if (spawnTool.Checked)
             {
-                if (!WorldData.IsWalkable(ground, item))
+                if (!world.CanWalk(tile.X, tile.Y) || ProjectData.FindEvent(world, tile.X, tile.Y) != null)
                 {
                     SetStatus("Choose a walkable tile for the player start.");
                     return;
@@ -624,7 +647,7 @@ namespace MossbellVale.Editor
         private void SetCell(Point tile, byte ground, byte item)
         {
             var index = tile.Y * world.Width + tile.X;
-            if (tile.X == world.SpawnX && tile.Y == world.SpawnY && !WorldData.IsWalkable(ground, item))
+            if (tile.X == world.SpawnX && tile.Y == world.SpawnY && !WorldData.CanWalk(ground, item, world.Movement[index]))
             {
                 SetStatus("Move the player start before placing a blocked tile here.");
                 return;
@@ -666,28 +689,38 @@ namespace MossbellVale.Editor
         private void ApplyWorld(WorldData data)
         {
             world = data;
+            activeMap.World = data;
             loading = true;
             for (var index = 0; index < outfitChoices.Length; index++)
                 outfitChoices[index].SelectedIndex = world.Outfit[index];
             loading = false;
             RefreshPlayer();
             UpdatePosition(new Point(-1, -1));
+            UpdateEventView();
+            RefreshMapHeader();
         }
 
         private void LoadWorld(WorldData data, string path, string message, byte[] bundle = null)
         {
+            var name = path == null ? message.Split(' ')[0] : Path.GetFileNameWithoutExtension(path);
+            if (name.Length > 31 || name.Any(character => character < ' ' || character > '~'))
+                name = "Imported Map";
+            LoadProject(new ProjectData(name, "Vale", data), path, message, bundle);
+        }
+
+        private void LoadProject(ProjectData data, string path, string message, byte[] bundle = null)
+        {
             art.LoadBundle(bundle);
-            ApplyWorld(data);
+            project = data;
             filename = path;
-            upgradeAvailable = path != null && data.WasMigrated;
-            saved = world.Copy();
+            upgradeAvailable = path != null && String.Equals(Path.GetExtension(path), ".rpgw", StringComparison.OrdinalIgnoreCase);
+            saved = data.Copy();
             savedArt = CurrentArt();
+            activeMap = null;
+            mapHistories.Clear();
+            RefreshTree(project.StartMap);
             RefreshBrushes();
-            undo.Clear();
-            redo.Clear();
-            CenterOnSpawn();
-            UpdateCommands();
-            SetStatus(upgradeAvailable ? message + " · Save to update the file format." : message);
+            SetStatus(upgradeAvailable ? message + " · Save to create a project file." : message);
         }
 
         private void CenterOnSpawn()
@@ -728,7 +761,7 @@ namespace MossbellVale.Editor
         private void UpdateCommands()
         {
             var dirty = HasChanges();
-            var name = filename == null ? "Untitled World" : Path.GetFileNameWithoutExtension(filename);
+            var name = filename == null ? "Untitled Project" : Path.GetFileNameWithoutExtension(filename);
             Text = (dirty ? "* " : "") + name + " – Mossbell Vale Editor";
             saveButton.Enabled = dirty || filename == null || upgradeAvailable;
             undoButton.Enabled = undo.Count > 0;
@@ -749,33 +782,37 @@ namespace MossbellVale.Editor
 
         private void ChooseWorld()
         {
-            using (var dialog = new OpenFileDialog { Filter = WorldFilter, CheckFileExists = true })
+            using (var dialog = new OpenFileDialog { Filter = OpenFilter, CheckFileExists = true })
                 if (dialog.ShowDialog(this) == DialogResult.OK && ConfirmChanges())
                     OpenWorld(dialog.FileName);
         }
 
         private void OpenWorld(string path)
         {
-            TryFileAction("Open world", delegate
+            TryFileAction("Open project", delegate
             {
                 var fullPath = Path.GetFullPath(path);
-                var data = WorldData.Read(File.OpenRead(fullPath));
                 var sidecar = Path.ChangeExtension(fullPath, ".rpga");
-                if (!File.Exists(sidecar) && string.Equals(Path.GetFileName(fullPath), "world.rpgw", StringComparison.OrdinalIgnoreCase))
+                var baseName = Path.GetFileNameWithoutExtension(fullPath);
+                if (!File.Exists(sidecar) && String.Equals(baseName, "world", StringComparison.OrdinalIgnoreCase))
                     sidecar = Path.Combine(Path.GetDirectoryName(fullPath), "art.rpga");
                 var bundle = File.Exists(sidecar) ? File.ReadAllBytes(sidecar) : null;
-                LoadWorld(data, fullPath, "Opened " + Path.GetFileName(fullPath), bundle);
+                var message = "Opened " + Path.GetFileName(fullPath);
+                if (String.Equals(Path.GetExtension(fullPath), ".rpgw", StringComparison.OrdinalIgnoreCase))
+                    LoadWorld(WorldData.Read(File.OpenRead(fullPath)), fullPath, message, bundle);
+                else
+                    LoadProject(ProjectData.Read(File.OpenRead(fullPath)), fullPath, message, bundle);
             });
         }
 
         private bool SaveWorld(bool saveAs)
         {
             EndStroke();
-            var target = filename;
+            var target = upgradeAvailable ? null : filename;
             if (saveAs || target == null)
             {
-                using (var dialog = new SaveFileDialog { Filter = WorldFilter, DefaultExt = "rpgw", AddExtension = true,
-                    FileName = target == null ? "world.rpgw" : Path.GetFileName(target), OverwritePrompt = true })
+                using (var dialog = new SaveFileDialog { Filter = WorldFilter, DefaultExt = "rpgp", AddExtension = true,
+                    FileName = target == null ? (filename == null ? "world.rpgp" : Path.GetFileNameWithoutExtension(filename) + ".rpgp") : Path.GetFileName(target), OverwritePrompt = true })
                 {
                     if (dialog.ShowDialog(this) != DialogResult.OK)
                         return false;
@@ -788,7 +825,7 @@ namespace MossbellVale.Editor
                 SaveProject(target, Path.ChangeExtension(target, ".rpga"));
                 filename = target;
                 upgradeAvailable = false;
-                saved = world.Copy();
+                saved = project.Copy();
                 savedArt = CurrentArt();
                 UpdateCommands();
                 SetStatus("Saved " + Path.GetFileName(target));
@@ -824,7 +861,7 @@ namespace MossbellVale.Editor
         private string ExportWorldTo(string root, Func<bool> confirmReplace)
         {
             var directory = Path.Combine(root, "3ds", "MossbellVale");
-            var target = Path.Combine(directory, "world.rpgw");
+            var target = Path.Combine(directory, "world.rpgp");
             var artTarget = Path.Combine(directory, "art.rpga");
             if ((File.Exists(target) || File.Exists(artTarget)) && !confirmReplace())
                 return null;
@@ -836,8 +873,9 @@ namespace MossbellVale.Editor
 
         private void SaveProject(string mapPath, string artPath)
         {
+            var bytes = project.WriteBytes();
             WorldData.WriteAtomically(artPath, CurrentArt());
-            world.Save(mapPath);
+            WorldData.WriteAtomically(mapPath, bytes);
         }
 
         private byte[] CurrentArt()
@@ -852,7 +890,7 @@ namespace MossbellVale.Editor
 
         private bool HasChanges()
         {
-            if (!world.Matches(saved))
+            if (!project.Matches(saved))
                 return true;
             var bytes = CurrentArt();
             if (Object.ReferenceEquals(bytes, savedArt))

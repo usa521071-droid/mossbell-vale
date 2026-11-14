@@ -5,6 +5,7 @@ import random
 
 from PIL import Image, ImageDraw
 from presets import make_presets
+from region import make_project
 from tileset import make_atlas
 
 
@@ -454,6 +455,7 @@ def main():
         image.save(ASSETS / f'{name}.png', optimize=True)
         (ASSETS / f'{name}.rgba').write_bytes(image.tobytes())
     preview = make_presets(ASSETS, tiles, player)
+    make_project(ASSETS, tiles, player)
     make_icon(tiles)
     make_banner(preview, tiles)
 
